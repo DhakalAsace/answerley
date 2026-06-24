@@ -9,10 +9,9 @@ export async function POST(request: Request) {
     const body = await request.json();
     const plan = AnsweringPlanEnvelopeSchema.parse(body.plan);
     const mode = body.mode === "live" ? "live" : "test";
-    const useGemini = Boolean(body.useGemini && process.env.GEMINI_API_KEY);
-    const compiler = useGemini
-      ? new GeminiFlashRuntimeCompiler()
-      : new FoundationPreviewRuntimeCompiler();
+    const compiler = body.useFoundationCompiler === true
+      ? new FoundationPreviewRuntimeCompiler()
+      : new GeminiFlashRuntimeCompiler();
     const runtime = await compiler.compile({
       plan,
       mode,

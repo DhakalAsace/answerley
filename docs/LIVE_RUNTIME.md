@@ -23,9 +23,10 @@ The canonical plan is designed for editing, references, metadata, and product
 configuration. A voice model needs concise business context, layered
 instructions, precise tool policy, and explicit test/live behavior.
 
-Gemini Flash is the primary compiler because the plan contains variable human
-language and exceptions. Programmatic code still enforces the output schema,
-coverage, source revision, cache key, tool allowlist, and readiness constraints.
+Gemini 3.1 Flash-Lite is the primary text/JSON compiler because the plan
+contains variable human language and exceptions. Programmatic code still
+enforces the output schema, coverage, source revision, cache key, tool
+allowlist, and readiness constraints.
 
 The development fallback compiler exists only so the foundation works without
 an API key.
@@ -169,10 +170,26 @@ All model IDs are environment-configurable. Do not spread preview model IDs
 through components or domain logic. Provider adapters own model-specific API
 code.
 
+Default model split:
+
+- Text, structured JSON, plan building, plan updates, and runtime compilation:
+  `gemini-3.1-flash-lite`
+- Real-time phone voice sessions through the Live API:
+  `gemini-3.1-flash-live-preview`
+
+The compiled runtime pack is converted into the Gemini Live JavaScript session
+shape by `src/integrations/gemini/live-session.ts`: `responseModalities:
+["AUDIO"]`, `systemInstruction.parts`, and synchronous `functionDeclarations`.
+
 ## Official implementation references
 
+- Gemini 3.1 Flash-Lite model: https://ai.google.dev/gemini-api/docs/models/gemini-3.1-flash-lite
+- Gemini 3.1 Flash Live Preview model: https://ai.google.dev/gemini-api/docs/models/gemini-3.1-flash-live-preview
+- Gemini 3 developer guide: https://ai.google.dev/gemini-api/docs/gemini-3
 - Gemini Live API overview: https://ai.google.dev/gemini-api/docs/live-api
 - Live API best practices: https://ai.google.dev/gemini-api/docs/live-api/best-practices
 - Live session management: https://ai.google.dev/gemini-api/docs/live-api/session-management
+- Live API tool use: https://ai.google.dev/gemini-api/docs/live-api/tools
+- Live API ephemeral tokens: https://ai.google.dev/gemini-api/docs/live-api/ephemeral-tokens
 - Function calling: https://ai.google.dev/gemini-api/docs/function-calling
 - Structured output: https://ai.google.dev/gemini-api/docs/structured-output

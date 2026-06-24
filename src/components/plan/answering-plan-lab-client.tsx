@@ -86,7 +86,7 @@ export function AnsweringPlanLabClient() {
       const response = await fetch("/api/dev/compile-runtime", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ plan: candidate, mode, useGemini: true }),
+        body: JSON.stringify({ plan: candidate, mode }),
       });
       const body = await response.json();
       if (!response.ok) throw new Error(body.error ?? "Compilation failed.");
@@ -151,7 +151,7 @@ export function AnsweringPlanLabClient() {
       const response = await fetch("/api/dev/plan-update", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ plan, instruction, useGemini: true }),
+        body: JSON.stringify({ plan, instruction }),
       });
       const body = await response.json();
       if (!response.ok) throw new Error(body.error ?? "Assistant request failed.");

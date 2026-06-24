@@ -261,7 +261,7 @@ export function AnswerleyTryClient({
       const response = await fetch("/api/dev/plan-update", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ plan, instruction: fullInstruction, useGemini: true }),
+        body: JSON.stringify({ plan, instruction: fullInstruction }),
       });
       const body = await response.json();
       if (!response.ok) throw new Error(body.error ?? "Update failed.");

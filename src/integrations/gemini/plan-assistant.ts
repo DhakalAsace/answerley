@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { createGeminiClient, geminiModels } from "./client";
+import { createGeminiClient, geminiModels, geminiTextGenerationConfig } from "./client";
 import type { AnsweringPlanEnvelope } from "@/domain/answering-plan/schema";
 import {
   PlanChangeProposalSchema
@@ -39,7 +39,7 @@ export async function runPlanAssistant(params: {
       mime_type: "application/json",
       schema: schema as never,
     },
-    generation_config: { temperature: 0.1 },
+    generation_config: geminiTextGenerationConfig,
   });
 
   if (!interaction.output_text) {

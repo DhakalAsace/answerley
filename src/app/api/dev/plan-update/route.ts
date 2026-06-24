@@ -9,11 +9,12 @@ export async function POST(request: Request) {
     const plan = AnsweringPlanEnvelopeSchema.parse(body.plan);
     const instruction = String(body.instruction ?? "").trim();
     if (!instruction) throw new Error("Instruction is required.");
-    const useGemini = Boolean(body.useGemini && process.env.GEMINI_API_KEY);
-    const result = useGemini
-      ? await runPlanAssistant({ plan, instruction })
-      : runFoundationMockPlanAssistant(plan, instruction);
-    return NextResponse.json({ result, provider: useGemini ? "gemini" : "foundation-mock" });
+    if (body.useFoundationMock === true) {
+      const result = runFoundationMockPlanAssistant(plan, instruction);
+      return NextResponse.json({ result, provider: "foundation-mock" });
+    }
+    const result = await runPlanAssistant({ plan, instruction });
+    return NextResponse.json({ result, provider: "gemini" });
   } catch (error) {
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Plan update failed." },

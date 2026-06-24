@@ -4,6 +4,7 @@ import {
   FoundationPreviewRuntimeCompiler,
   validateRuntimeCoverage,
 } from "../runtime/compiler";
+import { buildGeminiLiveConnectConfig } from "@/integrations/gemini/live-session";
 
 const compiler = new FoundationPreviewRuntimeCompiler();
 
@@ -31,5 +32,22 @@ describe("Gemini Live runtime contract", () => {
     expect(testRuntime.tools.find((tool) => tool.name === "simulate_transfer")?.enabled).toBe(true);
     expect(testRuntime.tools.some((tool) => tool.name === "transfer_call")).toBe(false);
     expect(liveRuntime.tools.find((tool) => tool.name === "transfer_call")?.enabled).toBe(true);
+  });
+
+  it("maps a runtime pack to Gemini Live session configuration", async () => {
+    const runtime = await compiler.compile({
+      plan: structuredClone(genericAnsweringPlanFixture),
+      mode: "live",
+      model: "gemini-3.1-flash-live-preview",
+      currentTime: "2026-06-24T18:00:00.000Z",
+    });
+    const liveConfig = buildGeminiLiveConnectConfig(runtime);
+    expect(liveConfig.model).toBe("gemini-3.1-flash-live-preview");
+    expect(liveConfig.config.responseModalities).toEqual(["AUDIO"]);
+    expect(liveConfig.config.systemInstruction.parts[0].text).toContain("<identity>");
+    expect(liveConfig.config.tools?.[0].functionDeclarations[0]).toMatchObject({
+      name: "record_collected_field",
+      parameters: expect.objectContaining({ type: "object" }),
+    });
   });
 });
