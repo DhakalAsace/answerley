@@ -30,14 +30,12 @@ export async function buildAnsweringPlanFromScrape(params: {
   }>;
 }): Promise<PlanBuilderOutput> {
   const client = createGeminiClient();
-  const schema = z.toJSONSchema(PlanBuilderOutputSchema);
   const interaction = await client.interactions.create({
     model: geminiModels.planBuilder,
     input: buildPrompt(params),
     response_format: {
       type: "text",
       mime_type: "application/json",
-      schema: schema as never,
     },
     generation_config: geminiTextGenerationConfig,
   });
@@ -46,7 +44,7 @@ export async function buildAnsweringPlanFromScrape(params: {
     throw new Error("Website Plan Builder returned no output text.");
   }
 
-  const output = PlanBuilderOutputSchema.parse(JSON.parse(interaction.output_text));
+  const output = PlanBuilderOutputSchema.parse(parseGeminiJson(interaction.output_text));
   assertPlanIntegrity(output.document);
   return output;
 }
@@ -78,6 +76,9 @@ RULES
 - Conflicting source values must be preserved in metadata.conflicts and added
   to unresolved.
 - Output schemaVersion "1.0.0".
+- Return only one valid JSON object with this top-level shape:
+  {"document": AnsweringPlanDocument, "fieldMetadata": {}, "unresolved": []}
+- Do not wrap the JSON in Markdown fences or explanatory prose.
 
 SUBMITTED URL
 ${params.submittedUrl}
@@ -85,4 +86,19 @@ ${params.submittedUrl}
 SCRAPED DOCUMENTS
 ${JSON.stringify(params.scrapedDocuments, null, 2)}
 `;
+}
+
+function parseGeminiJson(outputText: string) {
+  try {
+    return JSON.parse(outputText);
+  } catch {
+    const fenced = outputText.match(/```(?:json)?\s*([\s\S]*?)```/i)?.[1];
+    if (fenced) return JSON.parse(fenced);
+    const start = outputText.indexOf("{");
+    const end = outputText.lastIndexOf("}");
+    if (start >= 0 && end > start) {
+      return JSON.parse(outputText.slice(start, end + 1));
+    }
+    throw new Error("Website Plan Builder returned non-JSON output.");
+  }
 }
