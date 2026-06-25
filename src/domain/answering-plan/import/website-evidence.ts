@@ -111,6 +111,10 @@ export const WebsiteEvidenceBundleSchema = z.object({
 
 export type WebsiteEvidenceBundle = z.infer<typeof WebsiteEvidenceBundleSchema>;
 
+export function parseWebsiteEvidenceBundle(input: unknown): WebsiteEvidenceBundle {
+  return WebsiteEvidenceBundleSchema.parse(normalizeWebsiteEvidenceInput(input));
+}
+
 export function emptyWebsiteEvidenceBundle(warning?: string): WebsiteEvidenceBundle {
   return {
     business: {
@@ -140,4 +144,122 @@ export function emptyWebsiteEvidenceBundle(warning?: string): WebsiteEvidenceBun
     unresolved: warning ? [{ area: "website_evidence", reason: warning }] : [],
     warnings: warning ? [warning] : [],
   };
+}
+
+function normalizeWebsiteEvidenceInput(input: unknown): unknown {
+  if (!isRecord(input)) return input;
+
+  const normalized = { ...input };
+
+  normalized.business = normalizeBusiness(normalized.business);
+  normalized.coverage = normalizeCoverage(normalized.coverage);
+  normalized.offerings = asArray(normalized.offerings).map(normalizeOffering);
+  normalized.weeklyHours = asArray(normalized.weeklyHours).map(normalizeWeeklyHours);
+  normalized.locations = asArray(normalized.locations).map(normalizeLocation);
+  normalized.knowledgeItems = asArray(normalized.knowledgeItems).map(normalizeKnowledgeItem);
+  normalized.links = asArray(normalized.links);
+  normalized.evidence = asArray(normalized.evidence).map(normalizeEvidence);
+  normalized.unresolved = asArray(normalized.unresolved);
+  normalized.warnings = asArray(normalized.warnings);
+
+  return normalized;
+}
+
+function normalizeBusiness(input: unknown): unknown {
+  const business = isRecord(input) ? { ...input } : {};
+  for (const key of [
+    "name",
+    "websiteUrl",
+    "businessType",
+    "shortDescription",
+    "timezone",
+    "primaryLanguage",
+    "publicPhone",
+    "publicEmail",
+  ]) {
+    if (business[key] === undefined) business[key] = null;
+  }
+
+  if (business.address === undefined) {
+    business.address = null;
+  } else if (isRecord(business.address)) {
+    business.address = normalizeAddress(business.address);
+  }
+
+  return business;
+}
+
+function normalizeAddress(input: Record<string, unknown>): unknown {
+  const address = { ...input };
+  for (const key of ["line1", "city", "region", "postalCode", "country"]) {
+    if (address[key] === undefined) address[key] = null;
+  }
+  return address;
+}
+
+function normalizeCoverage(input: unknown): unknown {
+  const coverage = isRecord(input) ? { ...input } : {};
+  if (coverage.modeHint === undefined) coverage.modeHint = null;
+  if (coverage.description === undefined) coverage.description = null;
+  coverage.cities = asArray(coverage.cities);
+  coverage.regions = asArray(coverage.regions);
+  coverage.postalCodes = asArray(coverage.postalCodes);
+  return coverage;
+}
+
+function normalizeOffering(input: unknown): unknown {
+  if (!isRecord(input)) return input;
+  return {
+    ...input,
+    aliases: asArray(input.aliases),
+    pricingText: input.pricingText === undefined ? null : input.pricingText,
+    bookingLinkUrl: input.bookingLinkUrl === undefined ? null : input.bookingLinkUrl,
+  };
+}
+
+function normalizeWeeklyHours(input: unknown): unknown {
+  if (!isRecord(input)) return input;
+  return {
+    ...input,
+    periods: asArray(input.periods),
+    note: input.note === undefined ? null : input.note,
+  };
+}
+
+function normalizeLocation(input: unknown): unknown {
+  if (!isRecord(input)) return input;
+  return {
+    ...input,
+    addressText: input.addressText === undefined ? null : input.addressText,
+    phone: input.phone === undefined ? null : input.phone,
+    email: input.email === undefined ? null : input.email,
+  };
+}
+
+function normalizeKnowledgeItem(input: unknown): unknown {
+  if (!isRecord(input)) return input;
+  return {
+    ...input,
+    relatedUrl: input.relatedUrl === undefined ? null : input.relatedUrl,
+  };
+}
+
+function normalizeEvidence(input: unknown): unknown {
+  if (!isRecord(input)) return input;
+  return {
+    ...input,
+    sourceDocumentIds: asArray(input.sourceDocumentIds),
+    sourceUrl: input.sourceUrl === undefined ? null : input.sourceUrl,
+    confidence: input.confidence === undefined ? null : input.confidence,
+    conflictingValues: asArray(input.conflictingValues),
+    excerpt: input.excerpt === undefined ? null : input.excerpt,
+  };
+}
+
+function asArray(input: unknown): unknown[] {
+  return Array.isArray(input) ? input : [];
+}
+
+function isRecord(input: unknown): input is Record<string, unknown> {
+  return typeof input === "object" && input !== null && !Array.isArray(input);
 }

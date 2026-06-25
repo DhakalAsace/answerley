@@ -10,6 +10,7 @@ import { FoundationPreviewRuntimeCompiler } from "../runtime/compiler";
 import { assembleWebsiteEvidenceIntoPlan } from "../import/assemble";
 import {
   emptyWebsiteEvidenceBundle,
+  parseWebsiteEvidenceBundle,
   type WebsiteEvidenceBundle,
 } from "../import/website-evidence";
 import {
@@ -191,6 +192,38 @@ describe("website import evidence mapping", () => {
       }),
     );
     expect(() => assertGeminiSchemaCompatible(fullSchema)).toThrow(GeminiSchemaCompatibilityError);
+  });
+
+  it("normalizes omitted nullable evidence fields before validation", () => {
+    const parsed = parseWebsiteEvidenceBundle({
+      business: {
+        name: "Internet Assigned Numbers Authority",
+        websiteUrl: "https://www.iana.org",
+        businessType: null,
+        shortDescription: null,
+        timezone: null,
+        primaryLanguage: "en",
+        publicPhone: null,
+        publicEmail: null,
+        address: {
+          country: "United States",
+        },
+      },
+      coverage: {
+        modeHint: null,
+        description: null,
+      },
+    });
+
+    expect(parsed.business.address).toEqual({
+      line1: null,
+      city: null,
+      region: null,
+      postalCode: null,
+      country: "United States",
+    });
+    expect(parsed.offerings).toEqual([]);
+    expect(parsed.coverage.cities).toEqual([]);
   });
 
   it("assembles website evidence into the canonical plan without making public contact routing behavior", async () => {

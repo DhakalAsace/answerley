@@ -8,6 +8,7 @@ import { assertPlanIntegrity } from "@/domain/answering-plan/integrity";
 import { assembleWebsiteEvidenceIntoPlan } from "@/domain/answering-plan/import/assemble";
 import {
   emptyWebsiteEvidenceBundle,
+  parseWebsiteEvidenceBundle,
   WebsiteEvidenceBundleSchema,
   type WebsiteEvidenceBundle,
 } from "@/domain/answering-plan/import/website-evidence";
@@ -121,7 +122,7 @@ async function runEvidenceExtraction(
     throw new Error("Website Evidence Extractor returned no output text.");
   }
 
-  return WebsiteEvidenceBundleSchema.parse(JSON.parse(interaction.output_text));
+  return parseWebsiteEvidenceBundle(JSON.parse(interaction.output_text));
 }
 
 function buildPrompt(params: {
@@ -143,6 +144,8 @@ RULES
   warnings only.
 - Every extracted field must be supported by supplied pages.
 - Use null for absent scalar values and [] for absent lists.
+- If you output an address object, include line1, city, region, postalCode,
+  and country, using null for unknown fields.
 - Use sourceDocumentIds from the supplied document IDs exactly.
 - Public phone numbers are public contact facts only. Do not treat them as
   owner alert recipients, transfer destinations, or routing contacts.
