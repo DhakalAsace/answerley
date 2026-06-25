@@ -5,6 +5,16 @@ import {
   FieldMetadataMapSchema,
 } from "@/domain/answering-plan/schema";
 import { assertPlanIntegrity } from "@/domain/answering-plan/integrity";
+import { assembleWebsiteEvidenceIntoPlan } from "@/domain/answering-plan/import/assemble";
+import {
+  emptyWebsiteEvidenceBundle,
+  WebsiteEvidenceBundleSchema,
+  type WebsiteEvidenceBundle,
+} from "@/domain/answering-plan/import/website-evidence";
+import {
+  assertGeminiSchemaCompatible,
+  toGeminiJsonSchema,
+} from "./schema-compatibility";
 
 const PlanBuilderOutputSchema = z.object({
   document: AnsweringPlanDocumentSchema,
@@ -29,26 +39,89 @@ export async function buildAnsweringPlanFromScrape(params: {
     text: string;
   }>;
 }): Promise<PlanBuilderOutput> {
+  const evidence = await extractWebsiteEvidence(params);
+  const assembled = assembleWebsiteEvidenceIntoPlan({
+    evidence,
+    submittedUrl: params.submittedUrl,
+    sourceDocuments: params.scrapedDocuments.map((document) => ({
+      id: document.id,
+      url: document.url,
+      title: document.title,
+    })),
+  });
+
+  const output = PlanBuilderOutputSchema.parse({
+    document: assembled.document,
+    fieldMetadata: assembled.fieldMetadata,
+    unresolved: [
+      ...assembled.unresolved,
+      ...assembled.warnings.map((warning) => ({
+        planPath: "/",
+        reason: warning,
+        candidateValues: [],
+      })),
+    ],
+  });
+  assertPlanIntegrity(output.document);
+  return output;
+}
+
+async function extractWebsiteEvidence(params: {
+  submittedUrl: string;
+  scrapedDocuments: Array<{
+    id: string;
+    url: string;
+    title: string | null;
+    text: string;
+  }>;
+}): Promise<WebsiteEvidenceBundle> {
+  const schema = assertGeminiSchemaCompatible(toGeminiJsonSchema(WebsiteEvidenceBundleSchema));
+
+  try {
+    return await runEvidenceExtraction(params, schema);
+  } catch (error) {
+    if (!isSchemaRejectedError(error)) throw error;
+    try {
+      return await runEvidenceExtraction(params);
+    } catch (fallbackError) {
+      return emptyWebsiteEvidenceBundle(
+        `Gemini website evidence extraction failed: ${
+          fallbackError instanceof Error ? fallbackError.message : "Unknown error"
+        }`,
+      );
+    }
+  }
+}
+
+async function runEvidenceExtraction(
+  params: {
+    submittedUrl: string;
+    scrapedDocuments: Array<{
+      id: string;
+      url: string;
+      title: string | null;
+      text: string;
+    }>;
+  },
+  schema?: unknown,
+): Promise<WebsiteEvidenceBundle> {
   const client = createGeminiClient();
-  const schema = z.toJSONSchema(PlanBuilderOutputSchema);
   const interaction = await client.interactions.create({
     model: geminiModels.planBuilder,
     input: buildPrompt(params),
     response_format: {
       type: "text",
       mime_type: "application/json",
-      schema: schema as never,
+      ...(schema ? { schema: schema as never } : {}),
     },
     generation_config: geminiTextGenerationConfig,
   });
 
   if (!interaction.output_text) {
-    throw new Error("Website Plan Builder returned no output text.");
+    throw new Error("Website Evidence Extractor returned no output text.");
   }
 
-  const output = PlanBuilderOutputSchema.parse(JSON.parse(interaction.output_text));
-  assertPlanIntegrity(output.document);
-  return output;
+  return WebsiteEvidenceBundleSchema.parse(JSON.parse(interaction.output_text));
 }
 
 function buildPrompt(params: {
@@ -56,28 +129,29 @@ function buildPrompt(params: {
   scrapedDocuments: Array<{ id: string; url: string; title: string | null; text: string }>;
 }) {
   return `
-You are the Answerley Website Plan Builder.
+You are the Answerley Website Evidence Extractor.
 
-Convert the supplied website extraction into one complete Answering Plan v1.
-Populate factual business information only when supported by the supplied
-pages. Create conservative recommended behavior defaults where the schema
-expects configuration, and label those values in fieldMetadata as
-answerley_default or assistant rather than website facts.
+Extract website-derived evidence that Answerley can later assemble into its
+canonical Answering Plan. You are not writing the Answering Plan. Do not output
+canonical plan JSON, JSON Pointer paths, final object IDs, fieldMetadata maps,
+runtime instructions, dashboard configuration, or call-routing rules.
 
 RULES
 - Do not invent prices, hours, locations, policies, guarantees, availability,
   phone numbers, email addresses, booking links, or service coverage.
-- Use null, empty arrays, disabled modes, and unresolved items when information
-  is absent.
-- Business type may improve defaults but must not create vertical-specific
-  fields outside the canonical schema.
-- Create generic request types, intake fields, scenarios, follow-ups, unknown
-  handling, and greeting defaults that fit the discovered business.
-- Source metadata paths use JSON Pointer syntax.
-- Each website-derived value must cite the matching source document ID and URL.
-- Conflicting source values must be preserved in metadata.conflicts and added
-  to unresolved.
-- Output schemaVersion "1.0.0".
+- Return facts, links, source evidence, conflicts, unresolved areas, and
+  warnings only.
+- Every extracted field must be supported by supplied pages.
+- Use null for absent scalar values and [] for absent lists.
+- Use sourceDocumentIds from the supplied document IDs exactly.
+- Public phone numbers are public contact facts only. Do not treat them as
+  owner alert recipients, transfer destinations, or routing contacts.
+- Booking links are just links. Do not infer direct calendar integration.
+- Pricing text must be copied conservatively. Do not parse or invent amounts.
+- If values conflict, list the alternatives in evidence.conflictingValues and
+  add an unresolved item.
+- Keep sourceKey values stable, lowercase, and simple; they are temporary
+  evidence keys, not final Answering Plan IDs.
 
 SUBMITTED URL
 ${params.submittedUrl}
@@ -85,4 +159,9 @@ ${params.submittedUrl}
 SCRAPED DOCUMENTS
 ${JSON.stringify(params.scrapedDocuments, null, 2)}
 `;
+}
+
+function isSchemaRejectedError(error: unknown) {
+  if (!(error instanceof Error)) return false;
+  return /invalid argument|invalid_argument|schema|400/i.test(error.message);
 }
