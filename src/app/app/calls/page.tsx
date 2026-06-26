@@ -1,5 +1,5 @@
-import { CallsFeedClient } from "@/components/dashboard/calls-feed-client";
+import { redirect } from "next/navigation";
 
-export default function CallsPage() {
-  return <CallsFeedClient />;
+export default function LegacyCallsPage() {
+  redirect("/dashboard/calls");
 }

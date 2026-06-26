@@ -98,7 +98,7 @@ verification surfaces:
 - `/dev/answering-plan-lab`
 - `/dev/contract-health`
 - `/try`
-- `/app/calls`
+- `/dashboard/calls`
 
 A hidden subsystem is not considered complete until its effects can be tested
 through those surfaces or another approved customer-facing screen.

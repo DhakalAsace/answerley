@@ -31,7 +31,7 @@ export function HeroBusinessForm() {
           />
         </div>
         <Button type="submit" size="lg" className="h-14 rounded-xl sm:px-6" disabled={!business.trim()}>
-          Hear Answerley <ArrowRight className="size-4" />
+          Build my setup <ArrowRight className="size-4" />
         </Button>
       </div>
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2 px-3 pb-2 pt-1 text-xs text-slate-400">

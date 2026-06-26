@@ -112,7 +112,7 @@ check.
 The first customer slice: business input, build state, one browser test,
 Update Answerley, visible call outputs, critical review, save, and Calls.
 
-### `/app/calls`
+### `/dashboard/calls`
 
 The standard dashboard feed. The test call becomes the first record and uses
 the same shape as future live calls.

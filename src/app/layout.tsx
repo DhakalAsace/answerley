@@ -1,13 +1,13 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import { product } from "@/lib/product";
 
 export const metadata: Metadata = {
   title: {
-    default: "Answerley Foundation",
-    template: "%s | Answerley Foundation",
+    default: product.name,
+    template: `%s | ${product.name}`,
   },
-  description:
-    "A visual-first foundation for a configurable AI answering service.",
+  description: product.promise,
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {

@@ -6,7 +6,7 @@ const links = [
   { href: "/", label: "Customer slice", icon: PhoneCall },
   { href: "/dev/answering-plan-lab", label: "Plan Lab", icon: Braces },
   { href: "/dev/contract-health", label: "Contract Health", icon: HeartPulse },
-  { href: "/app/calls", label: "Calls dashboard", icon: Sparkles },
+  { href: "/dashboard/calls", label: "Calls dashboard", icon: Sparkles },
 ];
 
 export function FoundationHeader({ active }: { active?: string }) {

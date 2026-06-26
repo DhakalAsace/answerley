@@ -67,7 +67,7 @@ export async function buildAnsweringPlanFromScrape(params: {
   return output;
 }
 
-async function extractWebsiteEvidence(params: {
+export async function extractWebsiteEvidence(params: {
   submittedUrl: string;
   scrapedDocuments: Array<{
     id: string;
@@ -130,10 +130,10 @@ function buildPrompt(params: {
   scrapedDocuments: Array<{ id: string; url: string; title: string | null; text: string }>;
 }) {
   return `
-You are the Answerley Website Evidence Extractor.
+You are the Small Business Answering Website Evidence Extractor.
 
-Extract website-derived evidence that Answerley can later assemble into its
-canonical Answering Plan. You are not writing the Answering Plan. Do not output
+Extract website-derived evidence that Small Business Answering can later assemble
+into its canonical Answering Setup. You are not writing the final setup. Do not output
 canonical plan JSON, JSON Pointer paths, final object IDs, fieldMetadata maps,
 runtime instructions, dashboard configuration, or call-routing rules.
 

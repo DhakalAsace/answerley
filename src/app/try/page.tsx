@@ -1,4 +1,4 @@
-import { AnswerleyTryClient } from "@/components/onboarding/answerley-try-client";
+import { SmallBusinessAnsweringTryClient } from "@/components/onboarding/small-business-answering-try-client";
 
 export default async function TryPage({
   searchParams,
@@ -15,5 +15,5 @@ export default async function TryPage({
     ? previewValue[0] ?? null
     : previewValue ?? null;
 
-  return <AnswerleyTryClient businessInput={businessInput} preview={preview} />;
+  return <SmallBusinessAnsweringTryClient businessInput={businessInput} preview={preview} />;
 }

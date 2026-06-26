@@ -1,5 +1,5 @@
-import { CallDetailClient } from "@/components/dashboard/call-detail-client";
+import { redirect } from "next/navigation";
 
-export default function TestCallDetailPage() {
-  return <CallDetailClient />;
+export default function LegacyTestCallPage() {
+  redirect("/dashboard/calls/test-call");
 }

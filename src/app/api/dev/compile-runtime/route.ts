@@ -3,11 +3,14 @@ import { AnsweringPlanEnvelopeSchema } from "@/domain/answering-plan/schema";
 import { FoundationPreviewRuntimeCompiler } from "@/domain/answering-plan/runtime/compiler";
 import { GeminiFlashRuntimeCompiler } from "@/integrations/gemini/runtime-compiler";
 import { geminiModels } from "@/integrations/gemini/client";
+import { AnsweringSetupSchema, setupToAnsweringPlanEnvelope } from "@/domain/small-business-answering";
 
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const plan = AnsweringPlanEnvelopeSchema.parse(body.plan);
+    const plan = body.setup
+      ? setupToAnsweringPlanEnvelope(AnsweringSetupSchema.parse(body.setup))
+      : AnsweringPlanEnvelopeSchema.parse(body.plan);
     const mode = body.mode === "live" ? "live" : "test";
     const compiler = body.useFoundationCompiler === true
       ? new FoundationPreviewRuntimeCompiler()

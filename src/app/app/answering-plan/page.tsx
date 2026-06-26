@@ -1,5 +1,5 @@
-import { AnsweringPlanOverviewClient } from "@/components/dashboard/answering-plan-overview-client";
+import { redirect } from "next/navigation";
 
-export default function AnsweringPlanPage() {
-  return <AnsweringPlanOverviewClient />;
+export default function LegacyAnsweringPlanPage() {
+  redirect("/dashboard/answering-setup");
 }

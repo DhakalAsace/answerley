@@ -14,6 +14,8 @@ export function buildGeminiLiveConnectConfig(runtime: LiveRuntimePack) {
       systemInstruction: {
         parts: [{ text: runtime.systemInstruction }],
       },
+      inputAudioTranscription: {},
+      outputAudioTranscription: {},
       contextWindowCompression: { slidingWindow: {} },
       ...(functionDeclarations.length
         ? { tools: [{ functionDeclarations }] }
@@ -24,10 +26,14 @@ export function buildGeminiLiveConnectConfig(runtime: LiveRuntimePack) {
 
 export function buildGeminiLiveWebSocketSetup(runtime: LiveRuntimePack) {
   const liveConfig = buildGeminiLiveConnectConfig(runtime).config;
+  const { responseModalities, ...setupConfig } = liveConfig;
   return {
     setup: {
       model: `models/${runtime.model}`,
-      ...liveConfig,
+      generationConfig: {
+        responseModalities,
+      },
+      ...setupConfig,
     },
   };
 }
@@ -41,6 +47,31 @@ function toGeminiFunctionDeclaration(tool: LiveToolDefinition) {
       `Success means: ${tool.successMeaning}`,
       `On failure: ${tool.failureBehavior}`,
     ].join("\n"),
-    parameters: tool.parameters,
+    parameters: toLiveApiSchema(tool.parameters),
   };
+}
+
+function toLiveApiSchema(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(toLiveApiSchema);
+  if (!value || typeof value !== "object") return value;
+
+  const source = value as Record<string, unknown>;
+  const next: Record<string, unknown> = {};
+  for (const [key, item] of Object.entries(source)) {
+    if (key === "additionalProperties") continue;
+    if (key === "type" && Array.isArray(item)) {
+      const nonNullType = item.find((entry) => entry !== "null");
+      if (nonNullType) next.type = nonNullType;
+      if (item.includes("null")) next.nullable = true;
+      continue;
+    }
+    next[key] = toLiveApiSchema(item);
+  }
+
+  if (next.properties && typeof next.properties === "object") {
+    next.properties = Object.fromEntries(
+      Object.entries(next.properties as Record<string, unknown>).map(([key, item]) => [key, toLiveApiSchema(item)]),
+    );
+  }
+  return next;
 }
