@@ -494,7 +494,7 @@ export function SetupAssistantDock() {
         aria-expanded={open}
       >
         <MessageCircle className="size-5" />
-        Answering assistant
+        Ask assistant
       </button>
     </div>
   );
