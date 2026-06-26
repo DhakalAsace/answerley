@@ -36,6 +36,59 @@ export function isRequestCaptureField(value: string): value is RequestCaptureFie
   return requestCaptureFieldIds.includes(value as RequestCaptureField);
 }
 
+export const ownerAlertTemplateOptions = [
+  {
+    id: "standard",
+    label: "Standard summary",
+    description: "Good for most appointment requests and callbacks.",
+    template: "New call from {{caller_name}} about {{reason}}. Preferred time: {{preferred_time}}.",
+  },
+  {
+    id: "detailed",
+    label: "Detailed request",
+    description: "Includes the service and best callback number.",
+    template: "New request from {{caller_name}} about {{service_needed}}. Reason: {{reason}}. Callback: {{phone}}.",
+  },
+  {
+    id: "urgent",
+    label: "Urgent summary",
+    description: "Highlights urgency and the callback number first.",
+    template: "Urgent call from {{caller_name}}. Callback: {{phone}}. Issue: {{reason}}.",
+  },
+] as const;
+
+export const ownerAlertSampleValues: Record<RequestCaptureField, string> = {
+  caller_name: "Jamie Parker",
+  phone: "204-555-0184",
+  email: "jamie@example.com",
+  reason: "an appointment request",
+  service_needed: "cleaning service",
+  address: "123 Main Street",
+  urgency: "normal",
+  preferred_time: "Thursday afternoon",
+};
+
+export function renderOwnerAlertTemplatePreview(
+  template: string,
+  values: Partial<Record<RequestCaptureField | string, string>> = ownerAlertSampleValues,
+) {
+  return template.replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, (_match, key: string) => {
+    return values[key] || labelRequestField(key);
+  });
+}
+
+export function ownerAlertTemplateFields(template: string) {
+  const fields = new Set<RequestCaptureField | string>();
+  for (const match of template.matchAll(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g)) {
+    fields.add(match[1]);
+  }
+  return [...fields];
+}
+
+export function selectedOwnerAlertTemplateId(template: string) {
+  return ownerAlertTemplateOptions.find((option) => option.template === template)?.id ?? "custom";
+}
+
 export interface SuggestedSetupTestPrompt {
   id: string;
   category: "approved_answer" | "service" | "appointment" | "message" | "urgent" | "unknown";

@@ -34,7 +34,11 @@ import {
   demoAnsweringSetup,
   fieldsForSetupSection,
   labelRequestField,
+  ownerAlertTemplateFields,
+  ownerAlertTemplateOptions,
   requestCaptureFieldOptions,
+  renderOwnerAlertTemplatePreview,
+  selectedOwnerAlertTemplateId,
   setupSections,
   setupSectionStatus,
   type AnsweringSetup,
@@ -837,55 +841,7 @@ function SectionEditor({
   }
 
   if (sectionId === "owner_alerts") {
-    return (
-      <div className="space-y-5">
-        <div className="flex items-center justify-between gap-3">
-          <h3 className="text-sm font-semibold text-slate-950">Alert contacts</h3>
-          <Button
-            type="button"
-            variant="secondary"
-            size="sm"
-            onClick={() => updateDraft((draft) => {
-              draft.ownerAlerts.contacts.push({
-                id: `contact_${Date.now()}`,
-                role: "owner",
-                name: "New contact",
-                sms: null,
-                email: null,
-                enabled: true,
-              });
-            })}
-          >
-            <Plus className="size-4" /> Add contact
-          </Button>
-        </div>
-        {setup.ownerAlerts.contacts.map((contact, index) => (
-          <div key={contact.id} className="rounded-lg border border-slate-200 p-4">
-            <div className="grid gap-4 md:grid-cols-2">
-              <EditorField label="Name"><Input value={contact.name} onChange={(event) => updateDraft((draft) => { draft.ownerAlerts.contacts[index].name = event.target.value; })} /></EditorField>
-              <EditorField label="Role">
-                <Select value={contact.role} onChange={(event) => updateDraft((draft) => { draft.ownerAlerts.contacts[index].role = event.target.value as AnsweringSetup["ownerAlerts"]["contacts"][number]["role"]; })}>
-                  <option value="owner">Owner</option>
-                  <option value="office">Office</option>
-                  <option value="on_call">On call</option>
-                  <option value="backup">Backup</option>
-                </Select>
-              </EditorField>
-              <EditorField label="SMS"><Input value={contact.sms ?? ""} onChange={(event) => updateDraft((draft) => { draft.ownerAlerts.contacts[index].sms = event.target.value || null; })} /></EditorField>
-              <EditorField label="Email"><Input type="email" value={contact.email ?? ""} onChange={(event) => updateDraft((draft) => { draft.ownerAlerts.contacts[index].email = event.target.value.trim() || null; })} /></EditorField>
-            </div>
-            <div className="mt-4 flex flex-wrap gap-4">
-              <Checkbox label="Enabled" checked={contact.enabled} onChange={(checked) => updateDraft((draft) => { draft.ownerAlerts.contacts[index].enabled = checked; })} />
-            </div>
-          </div>
-        ))}
-        <div className="grid gap-4 md:grid-cols-2">
-          <Checkbox label="Send email alerts" checked={setup.ownerAlerts.channels.includes("email")} onChange={(checked) => updateDraft((draft) => { draft.ownerAlerts.channels = checked ? Array.from(new Set([...draft.ownerAlerts.channels, "email"])) : draft.ownerAlerts.channels.filter((channel) => channel !== "email"); })} />
-          <Checkbox label="Send SMS alerts" checked={setup.ownerAlerts.channels.includes("sms")} onChange={(checked) => updateDraft((draft) => { draft.ownerAlerts.channels = checked ? Array.from(new Set([...draft.ownerAlerts.channels, "sms"])) : draft.ownerAlerts.channels.filter((channel) => channel !== "sms"); })} />
-          <EditorField label="Owner alert wording" className="md:col-span-2"><Textarea value={setup.ownerAlerts.messageTemplate} onChange={(event) => updateDraft((draft) => { draft.ownerAlerts.messageTemplate = event.target.value; })} /></EditorField>
-        </div>
-      </div>
-    );
+    return <OwnerAlertsEditor setup={setup} updateDraft={updateDraft} />;
   }
 
   if (sectionId === "safety_unknown") {
@@ -942,6 +898,202 @@ function SectionEditor({
         </div>
       </div>
     </div>
+  );
+}
+
+function OwnerAlertsEditor({
+  setup,
+  updateDraft,
+}: {
+  setup: AnsweringSetup;
+  updateDraft: (mutator: (draft: AnsweringSetup) => void) => void;
+}) {
+  const emailContacts = setup.ownerAlerts.contacts.filter((contact) => contact.enabled && contact.email).length;
+  const smsContacts = setup.ownerAlerts.contacts.filter((contact) => contact.enabled && contact.sms).length;
+  const selectedTemplateId = selectedOwnerAlertTemplateId(setup.ownerAlerts.messageTemplate);
+  const templateFields = ownerAlertTemplateFields(setup.ownerAlerts.messageTemplate);
+
+  function setChannel(channel: AnsweringSetup["ownerAlerts"]["channels"][number], enabled: boolean) {
+    updateDraft((draft) => {
+      draft.ownerAlerts.channels = enabled
+        ? Array.from(new Set([...draft.ownerAlerts.channels, channel]))
+        : draft.ownerAlerts.channels.filter((item) => item !== channel);
+    });
+  }
+
+  return (
+    <div className="space-y-6 px-6 py-6">
+      <section>
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h3 className="text-sm font-semibold text-slate-950">Alert contacts</h3>
+            <p className="mt-1 text-sm leading-6 text-slate-500">People who can receive call summaries and urgent alerts.</p>
+          </div>
+          <Button
+            type="button"
+            variant="secondary"
+            size="sm"
+            onClick={() => updateDraft((draft) => {
+              draft.ownerAlerts.contacts.push({
+                id: `contact_${Date.now()}`,
+                role: "owner",
+                name: "New contact",
+                sms: null,
+                email: null,
+                enabled: true,
+              });
+            })}
+          >
+            <Plus className="size-4" /> Add contact
+          </Button>
+        </div>
+
+        <div className="mt-4 space-y-4">
+          {setup.ownerAlerts.contacts.map((contact, index) => (
+            <div key={contact.id} className={cn("rounded-lg border p-4", contact.enabled ? "border-slate-200 bg-white" : "border-slate-200 bg-slate-50")}>
+              <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 pb-4">
+                <div>
+                  <p className="text-sm font-semibold text-slate-950">{contact.name || "New contact"}</p>
+                  <p className="mt-1 text-xs capitalize text-slate-500">{formatMode(contact.role)}</p>
+                </div>
+                <div className="flex items-center gap-3 rounded-full border border-slate-200 bg-white px-3 py-2">
+                  <span className="text-xs font-semibold text-slate-600">Receives alerts</span>
+                  <ToggleSwitch
+                    checked={contact.enabled}
+                    label={`${contact.name || "Contact"} receives alerts`}
+                    onChange={(checked) => updateDraft((draft) => { draft.ownerAlerts.contacts[index].enabled = checked; })}
+                  />
+                </div>
+              </div>
+
+              <div className="mt-4 grid gap-4 md:grid-cols-2">
+                <EditorField label="Name">
+                  <Input value={contact.name} onChange={(event) => updateDraft((draft) => { draft.ownerAlerts.contacts[index].name = event.target.value; })} />
+                </EditorField>
+                <EditorField label="Role">
+                  <Select value={contact.role} onChange={(event) => updateDraft((draft) => { draft.ownerAlerts.contacts[index].role = event.target.value as AnsweringSetup["ownerAlerts"]["contacts"][number]["role"]; })}>
+                    <option value="owner">Owner</option>
+                    <option value="office">Office</option>
+                    <option value="on_call">On call</option>
+                    <option value="backup">Backup</option>
+                  </Select>
+                </EditorField>
+                <EditorField label="Text message number">
+                  <Input value={contact.sms ?? ""} placeholder="+1 555 0100" onChange={(event) => updateDraft((draft) => { draft.ownerAlerts.contacts[index].sms = event.target.value || null; })} />
+                </EditorField>
+                <EditorField label="Email address">
+                  <Input type="email" value={contact.email ?? ""} placeholder="owner@example.com" onChange={(event) => updateDraft((draft) => { draft.ownerAlerts.contacts[index].email = event.target.value.trim() || null; })} />
+                </EditorField>
+              </div>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <section className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+        <div>
+          <h3 className="text-sm font-semibold text-slate-950">Delivery methods</h3>
+          <p className="mt-1 text-sm leading-6 text-slate-500">Choose where prepared summaries should be sent.</p>
+        </div>
+        <div className="mt-4 grid gap-3 md:grid-cols-2">
+          <ChannelChoice
+            active={setup.ownerAlerts.channels.includes("email")}
+            title="Email alerts"
+            description="Send call summaries to contacts with an email address."
+            detail={`${emailContacts} active email contact${emailContacts === 1 ? "" : "s"}`}
+            onChange={(checked) => setChannel("email", checked)}
+          />
+          <ChannelChoice
+            active={setup.ownerAlerts.channels.includes("sms")}
+            title="Text message alerts"
+            description="Send short urgent and request summaries by text."
+            detail={smsContacts ? `${smsContacts} active text contact${smsContacts === 1 ? "" : "s"}` : "Add a text number above to use this"}
+            onChange={(checked) => setChannel("sms", checked)}
+          />
+        </div>
+      </section>
+
+      <section className="rounded-lg border border-slate-200 bg-white p-4">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h3 className="text-sm font-semibold text-slate-950">Owner alert message</h3>
+            <p className="mt-1 text-sm leading-6 text-slate-500">This is an example of the summary you will receive after a caller leaves details.</p>
+          </div>
+          {selectedTemplateId === "custom" ? <Badge tone="warning">Custom wording</Badge> : null}
+        </div>
+
+        <div className="mt-4 rounded-lg border border-blue-100 bg-blue-50 px-4 py-3">
+          <p className="text-xs font-semibold uppercase text-blue-700">Example alert</p>
+          <p className="mt-2 text-sm leading-6 text-slate-800">{renderOwnerAlertTemplatePreview(setup.ownerAlerts.messageTemplate)}</p>
+        </div>
+
+        <div className="mt-4 grid gap-3 md:grid-cols-3">
+          {ownerAlertTemplateOptions.map((option) => {
+            const active = selectedTemplateId === option.id;
+            return (
+              <button
+                key={option.id}
+                type="button"
+                aria-pressed={active}
+                onClick={() => updateDraft((draft) => { draft.ownerAlerts.messageTemplate = option.template; })}
+                className={cn(
+                  "rounded-lg border p-3 text-left transition",
+                  active ? "border-[#0757f8] bg-blue-50" : "border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50",
+                )}
+              >
+                <span className="block text-sm font-semibold text-slate-950">{option.label}</span>
+                <span className="mt-1 block text-xs leading-5 text-slate-500">{option.description}</span>
+              </button>
+            );
+          })}
+        </div>
+
+        {templateFields.length ? (
+          <div className="mt-4 flex flex-wrap gap-2">
+            {templateFields.map((field) => (
+              <span key={field} className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-xs font-semibold text-slate-600">
+                {labelRequestField(field)}
+              </span>
+            ))}
+          </div>
+        ) : null}
+      </section>
+    </div>
+  );
+}
+
+function ChannelChoice({
+  active,
+  description,
+  detail,
+  onChange,
+  title,
+}: {
+  active: boolean;
+  description: string;
+  detail: string;
+  onChange: (checked: boolean) => void;
+  title: string;
+}) {
+  return (
+    <button
+      type="button"
+      aria-pressed={active}
+      onClick={() => onChange(!active)}
+      className={cn(
+        "flex min-h-[104px] gap-3 rounded-lg border p-4 text-left transition",
+        active ? "border-[#0757f8] bg-white shadow-sm" : "border-slate-200 bg-white hover:border-slate-300",
+      )}
+    >
+      <span className={cn("mt-0.5 flex size-5 shrink-0 items-center justify-center rounded border", active ? "border-[#0757f8] bg-[#0757f8] text-white" : "border-slate-300 text-transparent")}>
+        <CheckCircle2 className="size-3.5" />
+      </span>
+      <span>
+        <span className="block text-sm font-semibold text-slate-950">{title}</span>
+        <span className="mt-1 block text-xs leading-5 text-slate-500">{description}</span>
+        <span className="mt-2 block text-xs font-semibold text-slate-600">{detail}</span>
+      </span>
+    </button>
   );
 }
 

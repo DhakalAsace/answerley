@@ -9,7 +9,12 @@ import {
 import { demoAnsweringSetup } from "../fixtures";
 import { buildSetupFromWebsiteEvidence } from "../import/from-website-evidence";
 import { setupToAnsweringPlanEnvelope } from "../import/from-answering-plan";
-import { labelRequestField, requestCaptureFieldOptions } from "../selectors";
+import {
+  labelRequestField,
+  ownerAlertTemplateFields,
+  renderOwnerAlertTemplatePreview,
+  requestCaptureFieldOptions,
+} from "../selectors";
 import { RequestFieldSchema } from "../schema";
 import type { WebsiteEvidenceBundle } from "@/domain/answering-plan/import/website-evidence";
 
@@ -79,6 +84,18 @@ describe("focused canonical mapping", () => {
       expect(option.label).not.toContain("_");
       expect(labelRequestField(option.id)).toBe(option.label);
     }
+  });
+
+  it("renders owner alert templates without exposing placeholder syntax", () => {
+    const preview = renderOwnerAlertTemplatePreview(demoAnsweringSetup.ownerAlerts.messageTemplate);
+    expect(preview).not.toContain("{{");
+    expect(preview).not.toContain("}}");
+    expect(preview).toContain("Jamie Parker");
+    expect(ownerAlertTemplateFields(demoAnsweringSetup.ownerAlerts.messageTemplate)).toEqual([
+      "caller_name",
+      "reason",
+      "preferred_time",
+    ]);
   });
 
   it("imports website evidence directly into the focused Answering Setup", () => {

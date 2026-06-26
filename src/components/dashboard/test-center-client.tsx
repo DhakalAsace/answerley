@@ -20,6 +20,7 @@ import {
   calculateAnsweringSetupReadiness,
   demoAnsweringSetup,
   generateSetupTestPrompts,
+  renderOwnerAlertTemplatePreview,
   type AnsweringSetup,
   type SuggestedSetupTestPrompt,
 } from "@/domain/small-business-answering";
@@ -66,7 +67,19 @@ function buildTestCall(setup: AnsweringSetup, prompt: SuggestedSetupTestPrompt):
       ],
       outcomes: [
         { id: "outcome_request", type: "request", title: "Appointment request captured", detail: "Preferred time: Thursday afternoon", status: "Ready for follow-up" },
-        { id: "outcome_alert", type: "alert", title: "Owner alert prepared", detail: setup.ownerAlerts.messageTemplate, status: "Prepared" },
+        {
+          id: "outcome_alert",
+          type: "alert",
+          title: "Owner alert prepared",
+          detail: renderOwnerAlertTemplatePreview(setup.ownerAlerts.messageTemplate, {
+            caller_name: "Jamie",
+            phone: "204-555-0184",
+            reason: "an appointment request",
+            service_needed: "service needed",
+            preferred_time: "Thursday afternoon",
+          }),
+          status: "Prepared",
+        },
       ],
     };
   }
