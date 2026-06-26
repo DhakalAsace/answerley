@@ -7,7 +7,6 @@ import {
   Building2,
   CalendarCheck2,
   CheckCircle2,
-  ChevronDown,
   ChevronRight,
   Clock3,
   Ear,
@@ -32,7 +31,6 @@ import { Textarea } from "@/components/ui/textarea";
 import {
   calculateAnsweringSetupReadiness,
   demoAnsweringSetup,
-  fieldsForSetupSection,
   labelRequestField,
   ownerAlertTemplateFields,
   ownerAlertTemplateOptions,
@@ -72,13 +70,16 @@ const sectionIconOverride: Partial<Record<SetupSectionId, typeof Clock3>> = {
 
 const weekdayKeys = ["monday", "tuesday", "wednesday", "thursday", "friday"] as const;
 const weekendKeys = ["saturday", "sunday"] as const;
-const primarySetupSectionIds: SetupSectionId[] = [
+const setupHubSectionIds: SetupSectionId[] = [
+  "business",
+  "services_answers",
   "hours_after_hours",
-  "call_handling",
   "appointment_handling",
+  "call_handling",
+  "greeting_voice",
   "owner_alerts",
-  "sources_activation",
   "safety_unknown",
+  "sources_activation",
 ];
 
 const sectionPresentation: Record<SetupSectionId, { label: string; sublabel: string; description: string }> = {
@@ -104,7 +105,7 @@ const sectionPresentation: Record<SetupSectionId, { label: string; sublabel: str
   },
   call_handling: {
     label: "Call handling",
-    sublabel: "Ready",
+    sublabel: "When calls answer",
     description: "Control when calls are answered, how long the phone rings, and urgent routing.",
   },
   greeting_voice: {
@@ -118,14 +119,14 @@ const sectionPresentation: Record<SetupSectionId, { label: string; sublabel: str
     description: "Choose who receives messages, urgent alerts, and owner summaries.",
   },
   safety_unknown: {
-    label: "Voicemail fallback",
-    sublabel: "Ready",
-    description: "Set safe fallback behavior when the answering plan does not know the answer.",
+    label: "Safety & fallback",
+    sublabel: "Unknown questions",
+    description: "Set safe fallback behavior for unknown questions, spam, privacy, and recording.",
   },
   sources_activation: {
-    label: "Call forwarding",
-    sublabel: "Ready",
-    description: "Review supporting sources and launch requirements before calls go live.",
+    label: "Sources & launch",
+    sublabel: "Final review",
+    description: "Review supporting sources, owner edits, and launch requirements before calls go live.",
   },
 };
 
@@ -142,6 +143,7 @@ const timeOptions = [
 ] as const;
 
 type DayKey = keyof AnsweringSetup["hours"]["regular"];
+type SetupSection = (typeof setupSections)[number];
 
 function gateTone(status: SetupGateStatus | "complete") {
   if (status === "complete") return "success";
@@ -185,12 +187,180 @@ function weekendMode(setup: AnsweringSetup) {
   return "short_weekend";
 }
 
+function setupSectionIcon(section: SetupSection) {
+  return sectionIconOverride[section.id] ?? iconMap[section.icon as keyof typeof iconMap] ?? FileSearch;
+}
+
+function formatTimeLabel(value: string) {
+  return timeOptions.find((option) => option.value === value)?.label ?? value;
+}
+
+function sectionFacts(setup: AnsweringSetup, id: SetupSectionId) {
+  switch (id) {
+    case "business":
+      return [setup.business.name, setup.business.timezone];
+    case "services_answers":
+      return [
+        `${setup.services.filter((service) => service.enabled).length} active services`,
+        `${setup.approvedAnswers.length} approved answers`,
+      ];
+    case "hours_after_hours": {
+      const weekday = firstPeriod(setup, "monday");
+      return [
+        `${formatTimeLabel(weekday.opensAt)} - ${formatTimeLabel(weekday.closesAt)} weekdays`,
+        setup.hours.afterHours.enabled ? "After-hours answer on" : "After-hours answer off",
+      ];
+    }
+    case "appointment_handling":
+      return [formatMode(setup.appointmentHandling.mode), `${setup.requestCapture.fields.length} details captured`];
+    case "call_handling":
+      return [formatMode(setup.callHandling.mode), `${setup.callHandling.answerTiming.ringDelaySeconds}s ring delay`];
+    case "greeting_voice":
+      return [setup.business.primaryLanguage.toUpperCase(), formatMode(setup.privacy.callRecording)];
+    case "owner_alerts":
+      return [
+        `${setup.ownerAlerts.contacts.filter((contact) => contact.enabled).length} active contacts`,
+        setup.ownerAlerts.channels.length ? setup.ownerAlerts.channels.map(formatMode).join(" + ") : "No delivery method",
+      ];
+    case "safety_unknown":
+      return [formatMode(setup.callHandling.unknownAnswerBehavior), setup.spamScreening.enabled ? "Spam screening on" : "Spam screening off"];
+    case "sources_activation":
+      return [
+        `${setup.sources.length} sources`,
+        `${setup.activationGates.filter((gate) => gate.status !== "complete").length} items to review`,
+      ];
+  }
+}
+
+function sectionHasCallerPreview(id: SetupSectionId) {
+  return id === "hours_after_hours" || id === "appointment_handling" || id === "call_handling" || id === "greeting_voice";
+}
+
+function sectionActionLabel(status: SetupGateStatus | "complete") {
+  return status === "complete" ? "Edit" : "Review";
+}
+
+function SetupHub({
+  onSelectSection,
+  setup,
+}: {
+  onSelectSection: (id: SetupSectionId) => void;
+  setup: AnsweringSetup;
+}) {
+  const hubSections = setupHubSectionIds
+    .map((id) => setupSections.find((section) => section.id === id))
+    .filter((section): section is SetupSection => Boolean(section));
+  const readyCount = hubSections.filter((section) => setupSectionStatus(setup, section) === "complete").length;
+
+  return (
+    <section className="mt-10">
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <h2 className="text-xl font-semibold text-slate-950">Setup areas</h2>
+          <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">
+            Pick one area to review or edit. Each area opens into a focused screen.
+          </p>
+        </div>
+        <Badge tone={readyCount === hubSections.length ? "success" : "warning"}>{readyCount}/{hubSections.length} ready</Badge>
+      </div>
+
+      <div className="mt-5 grid gap-4 md:grid-cols-2 2xl:grid-cols-3">
+        {hubSections.map((section) => {
+          const Icon = setupSectionIcon(section);
+          const status = setupSectionStatus(setup, section);
+          return (
+            <button
+              key={section.id}
+              type="button"
+              onClick={() => onSelectSection(section.id)}
+              className="group min-h-[218px] rounded-lg border border-slate-200 bg-white p-5 text-left shadow-[0_10px_26px_rgba(15,23,42,.045)] transition hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-[0_18px_42px_rgba(15,23,42,.08)]"
+            >
+              <span className="flex items-start justify-between gap-4">
+                <span className="flex size-11 items-center justify-center rounded-lg bg-blue-50 text-[#0757f8]">
+                  <Icon className="size-5" />
+                </span>
+                <Badge tone={gateTone(status)}>{gateLabel(status)}</Badge>
+              </span>
+              <span className="mt-5 block text-lg font-semibold text-slate-950">{sectionLabel(section.id)}</span>
+              <span className="mt-2 block min-h-[48px] text-sm leading-6 text-slate-600">{sectionDescription(section.id)}</span>
+              <span className="mt-4 flex flex-wrap gap-2">
+                {sectionFacts(setup, section.id).map((fact) => (
+                  <span key={fact} className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-semibold capitalize text-slate-600">
+                    {fact}
+                  </span>
+                ))}
+              </span>
+              <span className="mt-5 inline-flex items-center gap-2 text-sm font-semibold text-[#0757f8]">
+                {sectionActionLabel(status)} details <ChevronRight className="size-4 transition group-hover:translate-x-0.5" />
+              </span>
+            </button>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+function SetupSectionDetail({
+  onBack,
+  section,
+  setup,
+  status,
+  updateDraft,
+}: {
+  onBack: () => void;
+  section: SetupSection;
+  setup: AnsweringSetup;
+  status: SetupGateStatus | "complete";
+  updateDraft: (mutator: (draft: AnsweringSetup) => void) => void;
+}) {
+  const showCallerPreview = sectionHasCallerPreview(section.id);
+  const editorHasOwnPadding = section.id === "hours_after_hours" || section.id === "owner_alerts";
+
+  return (
+    <section className="mt-10 space-y-5">
+      <button
+        type="button"
+        onClick={onBack}
+        className="inline-flex h-10 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700 shadow-sm transition hover:border-slate-300 hover:bg-slate-50"
+      >
+        <ChevronRight className="size-4 rotate-180" /> Setup areas
+      </button>
+
+      <div className={cn("grid gap-5", showCallerPreview && "2xl:grid-cols-[minmax(0,1fr)_397px]")}>
+        <Card className="overflow-hidden border-slate-200 bg-white p-0">
+          <div className="border-b border-slate-100 px-6 py-6">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <h2 className="text-lg font-semibold text-slate-950">{sectionLabel(section.id)}</h2>
+                <p className="mt-1 max-w-2xl text-sm leading-6 text-slate-600">{sectionDescription(section.id)}</p>
+              </div>
+              <Badge tone={gateTone(status)}>{gateLabel(status)}</Badge>
+            </div>
+            <div className="mt-4 flex flex-wrap gap-2">
+              {sectionFacts(setup, section.id).map((fact) => (
+                <span key={fact} className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-semibold capitalize text-slate-600">
+                  {fact}
+                </span>
+              ))}
+            </div>
+          </div>
+          <div className={cn(!editorHasOwnPadding && "p-6")}>
+            <SectionEditor sectionId={section.id} setup={setup} updateDraft={updateDraft} />
+          </div>
+        </Card>
+
+        {showCallerPreview ? <CallerImpactPreview setup={setup} className="2xl:sticky 2xl:top-5" /> : null}
+      </div>
+    </section>
+  );
+}
+
 export function AnsweringPlanOverviewClient() {
   const [setup, setSetup] = useState<AnsweringSetup>(demoAnsweringSetup);
   const setupRef = useRef<AnsweringSetup>(demoAnsweringSetup);
   const hasUnsavedChangesRef = useRef(false);
-  const [selectedSectionId, setSelectedSectionId] = useState<SetupSectionId>("hours_after_hours");
-  const [showAllSections, setShowAllSections] = useState(false);
+  const [selectedSectionId, setSelectedSectionId] = useState<SetupSectionId | null>(null);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [saveState, setSaveState] = useState<"idle" | "saving" | "saved">("idle");
 
@@ -214,18 +384,9 @@ export function AnsweringPlanOverviewClient() {
   }, []);
 
   const readiness = useMemo(() => calculateAnsweringSetupReadiness(setup), [setup]);
-  const selectedSection = setupSections.find((section) => section.id === selectedSectionId) ?? setupSections[0];
-  const sectionProgress = setupSections.map((section) => ({
-    section,
-    status: setupSectionStatus(setup, section),
-    fields: fieldsForSetupSection(section.id),
-  }));
-  const visibleSectionProgress = (showAllSections
-    ? setupSections.map((section) => section.id)
-    : primarySetupSectionIds
-  )
-    .map((id) => sectionProgress.find((item) => item.section.id === id))
-    .filter((item): item is (typeof sectionProgress)[number] => Boolean(item));
+  const selectedSection = selectedSectionId
+    ? setupSections.find((section) => section.id === selectedSectionId) ?? null
+    : null;
 
   function updateDraft(mutator: (draft: AnsweringSetup) => void) {
     const draft = structuredClone(setupRef.current);
@@ -288,68 +449,17 @@ export function AnsweringPlanOverviewClient() {
         </div>
       </div>
 
-      <div className="mt-12 grid gap-5 lg:grid-cols-[224px_minmax(0,1fr)] lg:items-start 2xl:grid-cols-[224px_minmax(460px,1fr)_397px]">
-        <Card className="overflow-hidden border-slate-200 bg-white p-0 2xl:sticky 2xl:top-5">
-          <div className="border-b border-slate-100 px-5 py-6">
-            <h2 className="text-base font-semibold text-slate-950">Setup sections</h2>
-          </div>
-          <div className="divide-y divide-slate-100">
-            {visibleSectionProgress.map(({ section, status }) => {
-              const Icon = sectionIconOverride[section.id] ?? iconMap[section.icon as keyof typeof iconMap] ?? FileSearch;
-              const selected = selectedSectionId === section.id;
-              const copy = sectionPresentation[section.id];
-              const primarySection = primarySetupSectionIds.includes(section.id);
-              const navLabel = primarySection ? copy?.sublabel ?? gateLabel(status) : gateLabel(status);
-              const navTone = navLabel === "Ready" ? "ready" : navLabel === "Needs review" || status === "needs_review" ? "review" : status === "complete" ? "ready" : "required";
-              return (
-                <button
-                  key={section.id}
-                  type="button"
-                  onClick={() => setSelectedSectionId(section.id)}
-                  className={cn(
-                    "relative flex w-full items-center gap-4 px-5 py-4 text-left transition",
-                    selected ? "bg-[#f3f7ff]" : "bg-white hover:bg-slate-50",
-                  )}
-                >
-                  {selected ? <span className="absolute inset-y-0 left-0 w-[3px] bg-[#0757f8]" /> : null}
-                  <span className={cn("flex size-8 shrink-0 items-center justify-center rounded-full", selected ? "text-[#0757f8]" : "text-slate-500")}>
-                    <Icon className="size-5" />
-                  </span>
-                  <span className="min-w-0 flex-1">
-                    <span className={cn("block truncate text-sm font-semibold", selected ? "text-[#0757f8]" : "text-slate-950")}>
-                      {copy?.label ?? section.label}
-                    </span>
-                    <span className="mt-1 flex items-center gap-1.5 text-xs text-slate-500">
-                      {navLabel === "When we answer" ? null : navTone === "ready" ? <CheckCircle2 className="size-3.5 text-emerald-600" /> : navTone === "review" ? <span className="size-2 rounded-full bg-amber-500" /> : <span className="size-2 rounded-full bg-red-500" />}
-                      {navLabel}
-                    </span>
-                  </span>
-                </button>
-              );
-            })}
-          </div>
-          <div className="border-t border-slate-100 px-5 py-4">
-            <button
-              type="button"
-              onClick={() => setShowAllSections((value) => !value)}
-              className="flex w-full items-center justify-center gap-2 rounded-lg py-2 text-sm font-semibold text-[#0757f8] transition hover:bg-blue-50"
-            >
-              {showAllSections ? "Show key sections" : "View all sections"}
-              <ChevronDown className={cn("size-4 transition", showAllSections && "rotate-180")} />
-            </button>
-          </div>
-        </Card>
-
-        <Card className="overflow-hidden border-slate-200 bg-white p-0">
-          <div className="border-b border-slate-100 px-6 py-6">
-            <h2 className="text-lg font-semibold text-slate-950">{sectionLabel(selectedSection.id)}</h2>
-            <p className="mt-1 max-w-[420px] text-sm leading-6 text-slate-600">{sectionDescription(selectedSection.id)}</p>
-          </div>
-          <SectionEditor sectionId={selectedSection.id} setup={setup} updateDraft={updateDraft} />
-        </Card>
-
-        <CallerImpactPreview setup={setup} className="lg:col-span-2 2xl:col-span-1" />
-      </div>
+      {selectedSection ? (
+        <SetupSectionDetail
+          section={selectedSection}
+          setup={setup}
+          status={setupSectionStatus(setup, selectedSection)}
+          onBack={() => setSelectedSectionId(null)}
+          updateDraft={updateDraft}
+        />
+      ) : (
+        <SetupHub setup={setup} onSelectSection={setSelectedSectionId} />
+      )}
     </main>
   );
 }
