@@ -9,6 +9,8 @@ import {
 import { demoAnsweringSetup } from "../fixtures";
 import { buildSetupFromWebsiteEvidence } from "../import/from-website-evidence";
 import { setupToAnsweringPlanEnvelope } from "../import/from-answering-plan";
+import { labelRequestField, requestCaptureFieldOptions } from "../selectors";
+import { RequestFieldSchema } from "../schema";
 import type { WebsiteEvidenceBundle } from "@/domain/answering-plan/import/website-evidence";
 
 describe("focused canonical mapping", () => {
@@ -68,6 +70,15 @@ describe("focused canonical mapping", () => {
     expect(envelope.publishedRevision).toBeNull();
     expect(envelope.document.greetingVoice.assistantName).toBe("Small Business Answering");
     expect(JSON.stringify(envelope.document)).not.toContain("Answerley");
+  });
+
+  it("keeps request capture field labels mapped to every canonical field", () => {
+    const optionIds = requestCaptureFieldOptions.map((option) => option.id).sort();
+    expect(optionIds).toEqual([...RequestFieldSchema.options].sort());
+    for (const option of requestCaptureFieldOptions) {
+      expect(option.label).not.toContain("_");
+      expect(labelRequestField(option.id)).toBe(option.label);
+    }
   });
 
   it("imports website evidence directly into the focused Answering Setup", () => {

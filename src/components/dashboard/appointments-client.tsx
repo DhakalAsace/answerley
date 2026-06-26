@@ -13,7 +13,7 @@ import {
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
-import { demoAnsweringSetup, type AnsweringSetup } from "@/domain/small-business-answering";
+import { demoAnsweringSetup, labelRequestField, type AnsweringSetup } from "@/domain/small-business-answering";
 import { loadSbaWorkspace, type StoredRequest, type StoredTestCall } from "@/lib/sba-client-storage";
 
 function label(value: string) {
@@ -115,7 +115,7 @@ export function AppointmentsClient() {
             <h2 className="font-semibold text-slate-950">Captured fields</h2>
           </div>
           <div className="mt-4 flex flex-wrap gap-2">
-            {setup.requestCapture.fields.map((field) => <Badge key={field} tone="neutral">{label(field)}</Badge>)}
+            {setup.requestCapture.fields.map((field) => <Badge key={field} tone="neutral">{labelRequestField(field)}</Badge>)}
           </div>
           <div className="mt-4 rounded-lg bg-slate-50 p-4 text-sm leading-6 text-slate-600">{setup.requestCapture.callerSummaryWording}</div>
         </Card>

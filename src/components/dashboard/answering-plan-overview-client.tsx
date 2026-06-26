@@ -33,9 +33,12 @@ import {
   calculateAnsweringSetupReadiness,
   demoAnsweringSetup,
   fieldsForSetupSection,
+  labelRequestField,
+  requestCaptureFieldOptions,
   setupSections,
   setupSectionStatus,
   type AnsweringSetup,
+  type RequestCaptureField,
   type SetupGateStatus,
   type SetupSectionId,
 } from "@/domain/small-business-answering";
@@ -154,20 +157,6 @@ function formatMode(value: string) {
 
 function listFromText(value: string) {
   return value.split(",").map((item) => item.trim()).filter(Boolean);
-}
-
-function formatRequestField(value: string) {
-  const labels: Record<string, string> = {
-    caller_name: "Caller name",
-    phone: "Best callback number",
-    email: "Email address",
-    reason: "Reason for calling",
-    service_needed: "Service needed",
-    address: "Address",
-    urgency: "Urgency",
-    preferred_time: "Preferred time",
-  };
-  return labels[value] ?? formatMode(value);
 }
 
 function sectionLabel(id: SetupSectionId) {
@@ -565,9 +554,9 @@ function CallerImpactPreview({ className, setup }: { className?: string; setup: 
     || `Thanks for calling ${businessName}. We are currently closed. How can we help you?`;
   const urgentText = setup.hours.afterHours.urgentWording
     || "I am sorry to hear that. Let me get a few details so I can alert the owner right away.";
-  const urgentFields = setup.urgentRouting.collectFields.length
+  const urgentFields: RequestCaptureField[] = setup.urgentRouting.collectFields.length
     ? setup.urgentRouting.collectFields
-    : (["caller_name", "phone", "reason"] as const);
+    : ["caller_name", "phone", "reason"];
 
   return (
     <Card className={cn("overflow-hidden border-slate-200 bg-white p-0 2xl:sticky 2xl:top-5", className)}>
@@ -607,7 +596,7 @@ function CallerImpactPreview({ className, setup }: { className?: string; setup: 
             {urgentFields.slice(0, 3).map((field) => (
               <li key={field} className="flex items-center gap-2 text-sm text-slate-700">
                 <CheckCircle2 className="size-4 text-emerald-600" />
-                {formatRequestField(field)}
+                {labelRequestField(field)}
               </li>
             ))}
           </ul>
@@ -792,7 +781,13 @@ function SectionEditor({
         </EditorField>
         <EditorField label="Booking link"><Input type="url" value={setup.appointmentHandling.bookingLinkUrl ?? ""} onChange={(event) => updateDraft((draft) => { draft.appointmentHandling.bookingLinkUrl = event.target.value.trim() || null; })} /></EditorField>
         <Checkbox label="Do not confirm booked appointments until owner approval" checked={setup.appointmentHandling.doNotCallBookedUntilConfirmed} onChange={(checked) => updateDraft((draft) => { draft.appointmentHandling.doNotCallBookedUntilConfirmed = checked; })} />
-        <EditorField label="Fields to collect" className="md:col-span-2"><Input value={setup.requestCapture.fields.join(", ")} onChange={(event) => updateDraft((draft) => { draft.requestCapture.fields = listFromText(event.target.value) as AnsweringSetup["requestCapture"]["fields"]; })} /></EditorField>
+        <div className="md:col-span-2">
+          <p className="mb-2 text-sm font-semibold text-slate-700">Caller details to capture</p>
+          <RequestFieldsSelector
+            value={setup.requestCapture.fields}
+            onChange={(fields) => updateDraft((draft) => { draft.requestCapture.fields = fields; })}
+          />
+        </div>
         <EditorField label="Caller summary wording" className="md:col-span-2"><Textarea value={setup.requestCapture.callerSummaryWording} onChange={(event) => updateDraft((draft) => { draft.requestCapture.callerSummaryWording = event.target.value; })} /></EditorField>
         <Checkbox label="Send caller confirmation when relevant" checked={setup.callerConfirmations.sendBookingLinkWhenRelevant} onChange={(checked) => updateDraft((draft) => { draft.callerConfirmations.sendBookingLinkWhenRelevant = checked; })} />
       </div>
@@ -946,6 +941,54 @@ function SectionEditor({
           ))}
         </div>
       </div>
+    </div>
+  );
+}
+
+function RequestFieldsSelector({
+  value,
+  onChange,
+}: {
+  value: RequestCaptureField[];
+  onChange: (fields: RequestCaptureField[]) => void;
+}) {
+  const selected = new Set(value);
+
+  function toggleField(field: RequestCaptureField) {
+    const next = new Set(selected);
+    if (next.has(field)) {
+      next.delete(field);
+    } else {
+      next.add(field);
+    }
+    onChange(requestCaptureFieldOptions.map((option) => option.id).filter((fieldId) => next.has(fieldId)));
+  }
+
+  return (
+    <div className="grid gap-2 sm:grid-cols-2">
+      {requestCaptureFieldOptions.map((option) => {
+        const active = selected.has(option.id);
+        return (
+          <button
+            key={option.id}
+            type="button"
+            aria-pressed={active}
+            onClick={() => toggleField(option.id)}
+            className={cn(
+              "flex min-h-[72px] items-start gap-3 rounded-lg border p-3 text-left transition",
+              active ? "border-[#0757f8] bg-blue-50 text-slate-950" : "border-slate-200 bg-white text-slate-700 hover:border-slate-300 hover:bg-slate-50",
+            )}
+          >
+            <span className={cn("mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full border", active ? "border-[#0757f8] bg-[#0757f8] text-white" : "border-slate-300 text-transparent")}>
+              <CheckCircle2 className="size-3.5" />
+            </span>
+            <span>
+              <span className="block text-sm font-semibold">{option.label}</span>
+              <span className="mt-1 block text-xs leading-5 text-slate-500">{option.description}</span>
+            </span>
+          </button>
+        );
+      })}
     </div>
   );
 }

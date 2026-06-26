@@ -1,5 +1,41 @@
 import type { AnsweringSetup } from "./schema";
 
+export type RequestCaptureField = AnsweringSetup["requestCapture"]["fields"][number];
+
+export const requestCaptureFieldIds = [
+  "caller_name",
+  "phone",
+  "email",
+  "reason",
+  "service_needed",
+  "address",
+  "urgency",
+  "preferred_time",
+] satisfies RequestCaptureField[];
+
+export const requestCaptureFieldOptions = [
+  { id: "caller_name", label: "Caller name", description: "Who is calling" },
+  { id: "phone", label: "Callback phone", description: "Best number to reach them" },
+  { id: "email", label: "Email address", description: "Useful when a written follow-up is needed" },
+  { id: "reason", label: "Reason for calling", description: "What they need help with" },
+  { id: "service_needed", label: "Service needed", description: "Which service or job type they mention" },
+  { id: "address", label: "Service address", description: "Where the work or visit would happen" },
+  { id: "urgency", label: "Urgency", description: "How quickly they need a response" },
+  { id: "preferred_time", label: "Preferred time", description: "When they would like a callback or appointment" },
+] satisfies Array<{
+  id: RequestCaptureField;
+  label: string;
+  description: string;
+}>;
+
+export function labelRequestField(field: RequestCaptureField | string) {
+  return requestCaptureFieldOptions.find((option) => option.id === field)?.label ?? field.replaceAll("_", " ");
+}
+
+export function isRequestCaptureField(value: string): value is RequestCaptureField {
+  return requestCaptureFieldIds.includes(value as RequestCaptureField);
+}
+
 export interface SuggestedSetupTestPrompt {
   id: string;
   category: "approved_answer" | "service" | "appointment" | "message" | "urgent" | "unknown";
