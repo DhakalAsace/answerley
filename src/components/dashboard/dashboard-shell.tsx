@@ -136,7 +136,7 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
       </aside>
 
       <div className="min-w-0">
-        <header className="sticky top-0 z-30 border-b border-[#D6DAE1] bg-white/90 backdrop-blur-xl md:hidden">
+        <header className="sticky left-0 top-0 z-30 w-screen max-w-full border-b border-[#D6DAE1] bg-white/90 backdrop-blur-xl md:hidden">
           <div className="flex items-center justify-between px-4 py-3">
             <Link href="/" className="flex items-center gap-2">
               <span className="flex size-8 items-center justify-center rounded-[7px] bg-[#1565FF] text-[11px] font-bold text-white">SBA</span>
