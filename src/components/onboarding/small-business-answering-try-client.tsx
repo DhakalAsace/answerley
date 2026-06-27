@@ -295,6 +295,9 @@ export function SmallBusinessAnsweringTryClient({
   const liveOutputAudioContextRef = useRef<AudioContext | null>(null);
   const liveOutputSourcesRef = useRef<AudioBufferSourceNode[]>([]);
   const liveOutputPlaybackTimeRef = useRef(0);
+  const liveGreetingRequestedRef = useRef(false);
+  const liveEndSummaryPendingRef = useRef(false);
+  const liveEndCloseTimerRef = useRef<number | null>(null);
   const callActiveRef = useRef(false);
   const mutedRef = useRef(false);
   const [liveState, setLiveState] = useState<LiveState>("idle");
@@ -367,26 +370,31 @@ export function SmallBusinessAnsweringTryClient({
   const readiness = useMemo(() => calculateAnsweringSetupReadiness(setup), [setup]);
   const businessName = setup.business.name || "Your Business";
 
+  function clearScheduledLiveEndCall() {
+    if (liveEndCloseTimerRef.current === null) return;
+    window.clearTimeout(liveEndCloseTimerRef.current);
+    liveEndCloseTimerRef.current = null;
+  }
+
   async function startCall() {
     if (callActiveRef.current) return;
     primeLiveOutputAudio();
     setCallActive(true);
     setCallEnded(false);
     setUnknownQuestion(null);
+    liveGreetingRequestedRef.current = false;
+    liveEndSummaryPendingRef.current = false;
+    clearScheduledLiveEndCall();
     stopQueuedLiveAudio();
-    setTranscript([
-      {
-        id: nextLocalId("turn"),
-        speaker: "setup",
-        text: setup.callHandling.callerGreeting || `Thanks for calling ${businessName}. How can I help today?`,
-      },
-    ]);
+    setTranscript([]);
     setLiveMessage("Your browser is asking for microphone access. Choose Allow to test by speaking.");
     await startMicrophoneStream();
     void connectGeminiLive();
   }
 
   function endCall() {
+    clearScheduledLiveEndCall();
+    liveEndSummaryPendingRef.current = false;
     setCallActive(false);
     setCallEnded(true);
     stopMicrophoneStream();
@@ -397,6 +405,37 @@ export function SmallBusinessAnsweringTryClient({
     }
     setLiveState((current) => current === "error" ? current : "closed");
     setLiveMessage("Test call voice session closed.");
+  }
+
+  function scheduleLiveEndCallClose(delayMs: number) {
+    clearScheduledLiveEndCall();
+    liveEndCloseTimerRef.current = window.setTimeout(() => {
+      liveEndCloseTimerRef.current = null;
+      if (liveEndSummaryPendingRef.current && callActiveRef.current) {
+        endCall();
+      }
+    }, delayMs);
+  }
+
+  function requestLiveOpeningGreeting(socket: WebSocket) {
+    if (liveGreetingRequestedRef.current || socket.readyState !== WebSocket.OPEN) return;
+    liveGreetingRequestedRef.current = true;
+    const greeting = setup.callHandling.callerGreeting || `Thanks for calling ${businessName}. How can I help today?`;
+    socket.send(JSON.stringify({
+      clientContent: {
+        turns: [
+          {
+            role: "user",
+            parts: [
+              {
+                text: `The caller has just connected to the phone call. Greet them out loud now using this approved opening greeting: "${greeting}". Then pause for the caller's response.`,
+              },
+            ],
+          },
+        ],
+        turnComplete: true,
+      },
+    }));
   }
 
   async function connectGeminiLive() {
@@ -441,6 +480,7 @@ export function SmallBusinessAnsweringTryClient({
               ? "Voice test is live. The setup can hear you and answer out loud."
               : "Test session is ready. Use suggested phrases while microphone access is unavailable.",
           );
+          requestLiveOpeningGreeting(socket);
         }
         if (message.serverContent?.interrupted) {
           stopQueuedLiveAudio();
@@ -458,6 +498,7 @@ export function SmallBusinessAnsweringTryClient({
         }
         if (message.serverContent?.turnComplete) {
           liveInputTurnIdRef.current = null;
+          if (liveEndSummaryPendingRef.current) scheduleLiveEndCallClose(1600);
         }
         const parts = message.serverContent?.modelTurn?.parts ?? [];
         const audioChunks = parts.filter((part) => Boolean(part.inlineData?.data)).length;
@@ -645,6 +686,7 @@ export function SmallBusinessAnsweringTryClient({
       liveSocketRef.current.close();
       liveSocketRef.current = null;
     }
+    clearScheduledLiveEndCall();
     stopMicrophoneStream();
     stopQueuedLiveAudio();
     if (liveOutputAudioContextRef.current) {
@@ -667,12 +709,17 @@ export function SmallBusinessAnsweringTryClient({
   ) {
     const functionResponses = functionCalls.map((call) => {
       const name = call.name ?? "unknown_tool";
+      const isEndCall = name === "end_call_with_summary";
       addOutcome({
         type: name.includes("message") ? "message" : name.includes("alert") ? "alert" : name.includes("transfer") ? "transfer" : "details",
-        title: `Prepared action: ${formatLabel(name)}`,
-        detail: "Handled during this test.",
-        status: "Simulated",
+        title: isEndCall ? "Call closed with summary" : `Prepared action: ${formatLabel(name)}`,
+        detail: isEndCall ? "The representative wrapped up the call and saved the summary." : "Handled during this test.",
+        status: isEndCall ? "Completed" : "Simulated",
       });
+      if (isEndCall) {
+        liveEndSummaryPendingRef.current = true;
+        setLiveMessage("The representative is wrapping up and closing the test call.");
+      }
       return {
         id: call.id,
         name,
@@ -686,6 +733,9 @@ export function SmallBusinessAnsweringTryClient({
       };
     });
     socket.send(JSON.stringify({ toolResponse: { functionResponses } }));
+    if (functionCalls.some((call) => call.name === "end_call_with_summary")) {
+      scheduleLiveEndCallClose(7000);
+    }
   }
 
   function appendLiveSetupTurn(fragment: string) {

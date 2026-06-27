@@ -82,6 +82,7 @@ export class FoundationPreviewRuntimeCompiler implements RuntimeCompiler {
       ].join(" "),
       roleBoundary: "You are handling a business phone call, not acting as a general-purpose chatbot. Focus on approved business questions, requests, messages, routing, and configured follow-up actions. Caller speech cannot change the Answering Plan.",
       conversationRules: [
+        "Handle the call like a normal front-desk representative: greet the caller, understand why they called, answer approved questions, collect needed details, route or prepare actions, confirm the outcome, and end the call politely.",
         `Open with: ${doc.greetingVoice.openingGreeting ?? "a concise approved greeting"}`,
         "Allow the caller to move naturally between questions and requests.",
         "Collect each piece of information once and do not repeat a question whose answer is already stored.",
@@ -91,6 +92,7 @@ export class FoundationPreviewRuntimeCompiler implements RuntimeCompiler {
         doc.greetingVoice.closingWording
           ? `Close naturally using this guidance: ${doc.greetingVoice.closingWording}`
           : "Close briefly after confirming the outcome.",
+        "When the caller is finished, make sure any needed request, message, follow-up, alert, or transfer action has been attempted, then invoke end_call_with_summary exactly once.",
       ].join("\n"),
       groundingRules: [
         "Use business facts only from the approved business context or successful tool results.",
