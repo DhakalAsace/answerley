@@ -14,12 +14,8 @@ import {
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
-import { demoAnsweringSetup, type AnsweringSetup } from "@/domain/small-business-answering";
+import { demoAnsweringSetup, labelSbaValue, type AnsweringSetup } from "@/domain/small-business-answering";
 import { loadSbaWorkspace, type StoredMessage, type StoredRequest, type StoredRequestStatus, type StoredTestCall } from "@/lib/sba-client-storage";
-
-function label(value: string) {
-  return value.replaceAll("_", " ");
-}
 
 function statusTone(status: StoredRequestStatus) {
   if (status === "completed" || status === "booked") return "success";
@@ -125,7 +121,7 @@ export function RequestsClient() {
                     <span className="flex size-10 shrink-0 items-center justify-center rounded-md bg-violet-50 text-violet-700"><Icon className="size-5" /></span>
                     <div>
                       <div className="flex flex-wrap items-center gap-2">
-                        <p className="font-semibold capitalize text-slate-950">{label(request.requestType)}</p>
+                        <p className="font-semibold text-slate-950">{labelSbaValue(request.requestType)}</p>
                         {request.testMode ? <Badge tone="purple">Test</Badge> : null}
                       </div>
                       <p className="mt-1 flex items-center gap-1.5 text-xs text-slate-500"><Clock3 className="size-3.5" /> {new Date(request.createdAt).toLocaleString()}</p>
@@ -137,7 +133,7 @@ export function RequestsClient() {
                     {request.preferredTime ? <p className="mt-1 text-xs font-semibold text-slate-500">Preferred time: {request.preferredTime}</p> : null}
                   </div>
                   <div className="space-y-2">
-                    <Badge tone={statusTone(request.status)}>{label(request.status)}</Badge>
+                    <Badge tone={statusTone(request.status)}>{labelSbaValue(request.status)}</Badge>
                     {request.callerName || request.callerPhone ? (
                       <p className="flex items-center gap-1.5 text-xs text-slate-500"><UserRound className="size-3.5" /> {[request.callerName, request.callerPhone].filter(Boolean).join(" - ")}</p>
                     ) : null}

@@ -2,6 +2,73 @@ import type { AnsweringSetup } from "./schema";
 
 export type RequestCaptureField = AnsweringSetup["requestCapture"]["fields"][number];
 
+const sbaValueLabels: Record<string, string> = {
+  after_hours: "After hours",
+  approved_answer: "Approved answer",
+  archived: "Archived",
+  backup: "Backup",
+  booked: "Booked",
+  calendar_booking: "Calendar booking",
+  callback: "Callback",
+  caller_confirmation: "Caller confirmation",
+  caller_message: "Caller message",
+  capture_request: "Capture request",
+  closed_message: "Closed message",
+  completed: "Completed",
+  connected: "Connected",
+  contacted: "Contacted",
+  email: "Email",
+  high: "High",
+  immediate: "Immediate",
+  important: "Important",
+  in_app: "In-app",
+  internal: "Internal",
+  low: "Low",
+  medium: "Medium",
+  message: "Message",
+  needs_review: "Needs review",
+  new: "New",
+  none: "Not connected",
+  normal: "Normal",
+  office: "Office",
+  off: "Off",
+  on_call: "On call",
+  on_with_disclosure: "On with disclosure",
+  owner: "Owner",
+  owner_alert: "Owner alert",
+  owner_edit: "Owner edit",
+  owner_first: "Owner first",
+  overflow: "Overflow",
+  paused: "Paused",
+  route_to_owner: "Route to owner",
+  say_not_sure_and_offer_message: "Say not sure and offer message",
+  send_booking_link: "Send booking link",
+  service: "Service",
+  sms: "Text message",
+  system: "System",
+  take_message: "Take message",
+  take_message_and_flag: "Take message and flag",
+  testing: "Testing",
+  unknown: "Unknown question",
+  urgent: "Urgent",
+  urgent_only: "Urgent only",
+  uploaded_info: "Uploaded info",
+  website: "Website",
+};
+
+function titleCase(value: string) {
+  return value
+    .replace(/([a-z])([A-Z])/g, "$1 $2")
+    .replaceAll("_", " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/\b\w/g, (character) => character.toUpperCase());
+}
+
+export function labelSbaValue(value: string) {
+  return sbaValueLabels[value] ?? titleCase(value);
+}
+
 export const requestCaptureFieldIds = [
   "caller_name",
   "phone",
@@ -29,7 +96,7 @@ export const requestCaptureFieldOptions = [
 }>;
 
 export function labelRequestField(field: RequestCaptureField | string) {
-  return requestCaptureFieldOptions.find((option) => option.id === field)?.label ?? field.replaceAll("_", " ");
+  return requestCaptureFieldOptions.find((option) => option.id === field)?.label ?? labelSbaValue(field);
 }
 
 export function isRequestCaptureField(value: string): value is RequestCaptureField {

@@ -20,6 +20,7 @@ import { Textarea } from "@/components/ui/textarea";
 import {
   applySetupChange,
   demoAnsweringSetup,
+  labelSbaValue,
   setupSections,
   type AnsweringSetup,
   type SetupChangeProposal,
@@ -67,10 +68,6 @@ function entryId(role: ChatEntry["role"]) {
   return `${role}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 }
 
-function formatPlain(value: string) {
-  return value.replaceAll("_", " ");
-}
-
 function isSetupChangeIntent(value: string) {
   return /\b(change|update|edit|set|add|remove|delete|turn on|turn off|enable|disable|don't|do not|never|quote|pricing|price|hours?|close|open|greeting|service|answer|warranty|booking link|appointment mode|owner alert|urgent|spam|recording|privacy|timezone|phone number|email)\b/i.test(value);
 }
@@ -84,7 +81,7 @@ function requestTypeLabel(value: StoredRequest["requestType"]) {
   if (value === "appointment") return "appointment request";
   if (value === "urgent") return "urgent request";
   if (value === "callback") return "callback";
-  return formatPlain(value);
+  return labelSbaValue(value).toLowerCase();
 }
 
 function proposalSections(proposal: SetupChangeProposal) {
@@ -444,7 +441,7 @@ export function SetupAssistantDock() {
                 <div className="flex items-center justify-between gap-3">
                   <p className="text-sm font-semibold text-amber-950">Review setup update</p>
                   <Badge tone={pendingProposal.riskLevel === "high" ? "danger" : pendingProposal.riskLevel === "medium" ? "warning" : "success"}>
-                    {formatPlain(pendingProposal.riskLevel)} impact
+                    {labelSbaValue(pendingProposal.riskLevel)} impact
                   </Badge>
                 </div>
                 <p className="mt-2 text-sm leading-6 text-amber-800">{pendingProposal.summary}</p>

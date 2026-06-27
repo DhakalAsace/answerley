@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { notFound } from "next/navigation";
 import {
   ArrowRight,
   Braces,
@@ -24,6 +25,7 @@ import { operationalRelationships } from "@/domain/operations/relationships";
 import { formatLabel } from "@/lib/utils";
 
 export default function ContractHealthPage() {
+  if (process.env.NODE_ENV === "production") notFound();
   const summary = contractHealthSummary();
   return (
     <div className="min-h-screen bg-[#f6f7fb]">

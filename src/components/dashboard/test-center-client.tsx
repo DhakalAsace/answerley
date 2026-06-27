@@ -20,6 +20,7 @@ import {
   calculateAnsweringSetupReadiness,
   demoAnsweringSetup,
   generateSetupTestPrompts,
+  labelSbaValue,
   renderOwnerAlertTemplatePreview,
   type AnsweringSetup,
   type SuggestedSetupTestPrompt,
@@ -39,10 +40,6 @@ const categoryIcons = {
   urgent: ShieldAlert,
   unknown: TestTube2,
 };
-
-function label(value: string) {
-  return value.replaceAll("_", " ");
-}
 
 function buildTestCall(setup: AnsweringSetup, prompt: SuggestedSetupTestPrompt): StoredTestCall {
   const now = new Date().toISOString();
@@ -254,7 +251,7 @@ export function TestCenterClient() {
               <h2 className="font-semibold text-slate-950">Choose a caller</h2>
               <p className="mt-1 text-sm text-slate-500">{prompts.length} scenarios from the current setup</p>
             </div>
-            {selectedPrompt ? <Badge tone="neutral">{label(selectedPrompt.category)}</Badge> : null}
+            {selectedPrompt ? <Badge tone="neutral">{labelSbaValue(selectedPrompt.category)}</Badge> : null}
           </div>
 
           <div className="mt-4 max-h-[54vh] space-y-2 overflow-auto pr-1">
@@ -276,7 +273,7 @@ export function TestCenterClient() {
                       <Icon className="size-4" />
                     </span>
                     <span className="min-w-0">
-                      <span className={cn("block text-xs font-semibold capitalize", selected ? "text-white/70" : "text-slate-400")}>{label(prompt.category)}</span>
+                      <span className={cn("block text-xs font-semibold", selected ? "text-white/70" : "text-slate-400")}>{labelSbaValue(prompt.category)}</span>
                       <span className="mt-1 block text-sm font-semibold leading-5">{prompt.prompt}</span>
                     </span>
                   </div>

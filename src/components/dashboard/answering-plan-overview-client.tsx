@@ -31,6 +31,7 @@ import { Textarea } from "@/components/ui/textarea";
 import {
   calculateAnsweringSetupReadiness,
   demoAnsweringSetup,
+  labelSbaValue,
   labelRequestField,
   ownerAlertTemplateFields,
   ownerAlertTemplateOptions,
@@ -157,10 +158,6 @@ function gateLabel(status: SetupGateStatus | "complete") {
   return "Required";
 }
 
-function formatMode(value: string) {
-  return value.replaceAll("_", " ");
-}
-
 function listFromText(value: string) {
   return value.split(",").map((item) => item.trim()).filter(Boolean);
 }
@@ -212,18 +209,18 @@ function sectionFacts(setup: AnsweringSetup, id: SetupSectionId) {
       ];
     }
     case "appointment_handling":
-      return [formatMode(setup.appointmentHandling.mode), `${setup.requestCapture.fields.length} details captured`];
+      return [labelSbaValue(setup.appointmentHandling.mode), `${setup.requestCapture.fields.length} details captured`];
     case "call_handling":
-      return [formatMode(setup.callHandling.mode), `${setup.callHandling.answerTiming.ringDelaySeconds}s ring delay`];
+      return [labelSbaValue(setup.callHandling.mode), `${setup.callHandling.answerTiming.ringDelaySeconds}s ring delay`];
     case "greeting_voice":
-      return [setup.business.primaryLanguage.toUpperCase(), formatMode(setup.privacy.callRecording)];
+      return [setup.business.primaryLanguage.toUpperCase(), labelSbaValue(setup.privacy.callRecording)];
     case "owner_alerts":
       return [
         `${setup.ownerAlerts.contacts.filter((contact) => contact.enabled).length} active contacts`,
-        setup.ownerAlerts.channels.length ? setup.ownerAlerts.channels.map(formatMode).join(" + ") : "No delivery method",
+        setup.ownerAlerts.channels.length ? setup.ownerAlerts.channels.map(labelSbaValue).join(" + ") : "No delivery method",
       ];
     case "safety_unknown":
-      return [formatMode(setup.callHandling.unknownAnswerBehavior), setup.spamScreening.enabled ? "Spam screening on" : "Spam screening off"];
+      return [labelSbaValue(setup.callHandling.unknownAnswerBehavior), setup.spamScreening.enabled ? "Spam screening on" : "Spam screening off"];
     case "sources_activation":
       return [
         `${setup.sources.length} sources`,
@@ -987,7 +984,7 @@ function SectionEditor({
             <div key={source.id} className="rounded-lg border border-slate-200 p-4">
               <div className="flex flex-wrap items-center gap-2">
                 <p className="text-sm font-semibold text-slate-900">{source.label}</p>
-                <Badge tone="neutral">{formatMode(source.type)}</Badge>
+                <Badge tone="neutral">{labelSbaValue(source.type)}</Badge>
               </div>
               {source.excerpt ? <p className="mt-2 text-sm leading-6 text-slate-500">{source.excerpt}</p> : null}
             </div>
@@ -1064,7 +1061,7 @@ function OwnerAlertsEditor({
               <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 pb-4">
                 <div>
                   <p className="text-sm font-semibold text-slate-950">{contact.name || "New contact"}</p>
-                  <p className="mt-1 text-xs capitalize text-slate-500">{formatMode(contact.role)}</p>
+                  <p className="mt-1 text-xs text-slate-500">{labelSbaValue(contact.role)}</p>
                 </div>
                 <div className="flex items-center gap-3 rounded-full border border-slate-200 bg-white px-3 py-2">
                   <span className="text-xs font-semibold text-slate-600">Receives alerts</span>

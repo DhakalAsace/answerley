@@ -13,12 +13,8 @@ import {
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
-import { demoAnsweringSetup, labelRequestField, type AnsweringSetup } from "@/domain/small-business-answering";
+import { demoAnsweringSetup, labelRequestField, labelSbaValue, type AnsweringSetup } from "@/domain/small-business-answering";
 import { loadSbaWorkspace, type StoredRequest, type StoredTestCall } from "@/lib/sba-client-storage";
-
-function label(value: string) {
-  return value.replaceAll("_", " ");
-}
 
 function fallbackAppointmentRequests(testCall: StoredTestCall | null): StoredRequest[] {
   if (!testCall) return [];
@@ -78,7 +74,7 @@ export function AppointmentsClient() {
         <div>
           <div className="flex flex-wrap items-center gap-2">
             <h1 className="text-2xl font-bold text-slate-950 sm:text-3xl">Appointments</h1>
-            <Badge tone="neutral">{label(appointment.mode)}</Badge>
+            <Badge tone="neutral">{labelSbaValue(appointment.mode)}</Badge>
           </div>
           <p className="mt-1 max-w-2xl text-sm leading-6 text-slate-500">Review appointment requests and how callers are guided.</p>
         </div>
@@ -94,11 +90,11 @@ export function AppointmentsClient() {
               <CalendarCheck2 className="size-4 text-violet-600" />
               <h2 className="font-semibold text-slate-950">Handling mode</h2>
             </div>
-            <Badge tone={appointment.mode === "calendar_booking" ? "success" : "warning"}>{label(appointment.mode)}</Badge>
+            <Badge tone={appointment.mode === "calendar_booking" ? "success" : "warning"}>{labelSbaValue(appointment.mode)}</Badge>
           </div>
           <div className="mt-4 grid gap-3 sm:grid-cols-2">
             <Fact label="Booking link" value={appointment.bookingLinkUrl ? "Configured" : "Not configured"} />
-            <Fact label="Calendar" value={label(appointment.calendarIntegration)} />
+            <Fact label="Calendar" value={labelSbaValue(appointment.calendarIntegration)} />
             <Fact label="Confirmation" value={appointment.doNotCallBookedUntilConfirmed ? "Request first" : "Can confirm directly"} />
             <Fact label="Requests" value={String(appointmentRequests.length)} />
           </div>
@@ -142,7 +138,7 @@ export function AppointmentsClient() {
                 </div>
                 <div>
                   <p className="text-xs font-semibold text-slate-400">Status</p>
-                  <Badge tone={request.status === "completed" || request.status === "booked" ? "success" : request.status === "contacted" ? "info" : request.status === "archived" ? "neutral" : "warning"}>{label(request.status)}</Badge>
+                  <Badge tone={request.status === "completed" || request.status === "booked" ? "success" : request.status === "contacted" ? "info" : request.status === "archived" ? "neutral" : "warning"}>{labelSbaValue(request.status)}</Badge>
                 </div>
                 <Link href="/dashboard/calls/test-call" className="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-slate-200 px-3 text-sm font-semibold text-slate-700 hover:bg-slate-50">
                   View call <ArrowRight className="size-4" />

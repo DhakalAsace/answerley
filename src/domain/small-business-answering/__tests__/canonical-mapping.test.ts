@@ -10,12 +10,23 @@ import { demoAnsweringSetup } from "../fixtures";
 import { buildSetupFromWebsiteEvidence } from "../import/from-website-evidence";
 import { setupToAnsweringPlanEnvelope } from "../import/from-answering-plan";
 import {
+  labelSbaValue,
   labelRequestField,
   ownerAlertTemplateFields,
   renderOwnerAlertTemplatePreview,
   requestCaptureFieldOptions,
 } from "../selectors";
-import { RequestFieldSchema } from "../schema";
+import {
+  ActivationGateSchema,
+  AlertContactSchema,
+  AppointmentHandlingSchema,
+  CallHandlingSchema,
+  EvidenceSourceSchema,
+  HoursSchema,
+  PrivacySchema,
+  RequestFieldSchema,
+  SetupStatusSchema,
+} from "../schema";
 import type { WebsiteEvidenceBundle } from "@/domain/answering-plan/import/website-evidence";
 
 describe("focused canonical mapping", () => {
@@ -83,6 +94,50 @@ describe("focused canonical mapping", () => {
     for (const option of requestCaptureFieldOptions) {
       expect(option.label).not.toContain("_");
       expect(labelRequestField(option.id)).toBe(option.label);
+    }
+  });
+
+  it("labels rendered canonical values without raw enum syntax", () => {
+    const renderedValues = new Set([
+      ...RequestFieldSchema.options,
+      ...HoursSchema.shape.afterHours.shape.mode.options,
+      ...CallHandlingSchema.shape.mode.options,
+      ...CallHandlingSchema.shape.unknownAnswerBehavior.options,
+      ...AppointmentHandlingSchema.shape.mode.options,
+      "none",
+      "connected",
+      ...AlertContactSchema.shape.role.options,
+      ...PrivacySchema.shape.callRecording.options,
+      ...EvidenceSourceSchema.shape.type.options,
+      ...SetupStatusSchema.shape.mode.options,
+      ...ActivationGateSchema.shape.status.options,
+      "approved_answer",
+      "service",
+      "appointment",
+      "message",
+      "urgent",
+      "unknown",
+      "new",
+      "contacted",
+      "booked",
+      "completed",
+      "archived",
+      "owner_alert",
+      "caller_confirmation",
+      "caller_message",
+      "in_app",
+      "high",
+      "medium",
+      "low",
+    ]);
+
+    for (const value of renderedValues) {
+      const label = labelSbaValue(value);
+      expect(label, value).not.toMatch(/[{}_]/);
+      expect(label.trim(), value).not.toEqual("");
+      if (value.includes("_")) {
+        expect(label, value).not.toBe(value);
+      }
     }
   });
 
