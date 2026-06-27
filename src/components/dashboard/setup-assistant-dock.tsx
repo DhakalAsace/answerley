@@ -13,7 +13,6 @@ import {
   Sparkles,
   X,
 } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
@@ -220,8 +219,8 @@ function buildWorkspaceAnswer(params: {
       id: entryId("assistant"),
       role: "assistant",
       text: messages.length
-        ? `There are ${messages.length} prepared message${messages.length === 1 ? "" : "s"} in this workspace. The setup currently has ${alertContacts} enabled alert contact${alertContacts === 1 ? "" : "s"}.`
-        : `No messages have been prepared yet. The setup currently has ${alertContacts} enabled alert contact${alertContacts === 1 ? "" : "s"}.`,
+        ? `There are ${messages.length} message${messages.length === 1 ? "" : "s"} in this workspace. The setup currently has ${alertContacts} enabled alert contact${alertContacts === 1 ? "" : "s"}.`
+        : `No messages have been created yet. The setup currently has ${alertContacts} enabled alert contact${alertContacts === 1 ? "" : "s"}.`,
       actions: [{ label: "Review Owner Alerts", href: "/dashboard/answering-setup" }],
     };
   }
@@ -437,9 +436,9 @@ export function SetupAssistantDock() {
               <div className="rounded-xl border border-amber-200 bg-amber-50 p-3">
                 <div className="flex items-center justify-between gap-3">
                   <p className="text-sm font-semibold text-amber-950">Review setup update</p>
-                  <Badge tone={pendingProposal.riskLevel === "high" ? "danger" : pendingProposal.riskLevel === "medium" ? "warning" : "success"}>
+                  <span className="text-xs font-semibold text-amber-700">
                     {labelSbaValue(pendingProposal.riskLevel)} impact
-                  </Badge>
+                  </span>
                 </div>
                 <p className="mt-2 text-sm leading-6 text-amber-800">{pendingProposal.summary}</p>
                 <p className="mt-2 text-xs font-semibold text-amber-700">

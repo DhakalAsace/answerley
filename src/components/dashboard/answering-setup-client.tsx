@@ -22,7 +22,6 @@ import {
   Sparkles,
   Volume2,
 } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -172,6 +171,12 @@ function formatTimeLabel(value: string) {
   return timeOptions.find((option) => option.value === value)?.label ?? value;
 }
 
+function languageLabel(value: string) {
+  if (value === "es") return "Spanish";
+  if (value === "fr") return "French";
+  return "English";
+}
+
 function sectionFacts(setup: AnsweringSetup, id: SetupSectionId) {
   switch (id) {
     case "business":
@@ -193,7 +198,7 @@ function sectionFacts(setup: AnsweringSetup, id: SetupSectionId) {
     case "call_handling":
       return [labelSbaValue(setup.callHandling.mode), `${setup.callHandling.answerTiming.ringDelaySeconds}s ring delay`];
     case "greeting_voice":
-      return [setup.business.primaryLanguage.toUpperCase(), labelSbaValue(setup.privacy.callRecording)];
+      return [languageLabel(setup.business.primaryLanguage), labelSbaValue(setup.privacy.callRecording)];
     case "owner_alerts":
       return [
         `${setup.ownerAlerts.contacts.filter((contact) => contact.enabled).length} active contacts`,
@@ -405,9 +410,6 @@ export function AnsweringSetupClient() {
           </p>
         </div>
         <div className="flex flex-wrap gap-3">
-          <Link href="/dashboard/test-center" className="inline-flex h-11 items-center gap-2 rounded-lg border border-slate-300 bg-white px-5 text-sm font-semibold text-slate-900 shadow-sm transition hover:border-slate-400 hover:bg-slate-50">
-            <PhoneCall className="size-4" /> Test setup
-          </Link>
           <Button
             onClick={saveSetup}
             disabled={saveState === "saving"}
@@ -756,7 +758,7 @@ function SectionEditor({
         <EditorField label="Public phone"><Input value={setup.business.publicPhone ?? ""} onChange={(event) => updateDraft((draft) => { draft.business.publicPhone = event.target.value || null; })} /></EditorField>
         <EditorField label="Public email"><Input type="email" value={setup.business.publicEmail ?? ""} onChange={(event) => updateDraft((draft) => { draft.business.publicEmail = event.target.value.trim() || null; })} /></EditorField>
         <EditorField label="Timezone"><Input value={setup.business.timezone} onChange={(event) => updateDraft((draft) => { draft.business.timezone = event.target.value; draft.hours.timezone = event.target.value; })} /></EditorField>
-        <EditorField label="Primary language"><Input value={setup.business.primaryLanguage} onChange={(event) => updateDraft((draft) => { draft.business.primaryLanguage = event.target.value || "en"; })} /></EditorField>
+        <EditorField label="Primary language"><LanguageSelect value={setup.business.primaryLanguage} onChange={(value) => updateDraft((draft) => { draft.business.primaryLanguage = value; })} /></EditorField>
         <EditorField label="Service area" className="md:col-span-2"><Textarea value={setup.business.serviceArea.summary ?? ""} onChange={(event) => updateDraft((draft) => { draft.business.serviceArea.summary = event.target.value || null; })} /></EditorField>
         <EditorField label="Areas served" className="md:col-span-2"><Input value={setup.business.serviceArea.areas.join(", ")} onChange={(event) => updateDraft((draft) => { draft.business.serviceArea.areas = listFromText(event.target.value); })} /></EditorField>
       </div>
@@ -870,7 +872,7 @@ function SectionEditor({
             onChange={(fields) => updateDraft((draft) => { draft.requestCapture.fields = fields; })}
           />
         </div>
-        <EditorField label="Caller summary wording" className="md:col-span-2"><Textarea value={setup.requestCapture.callerSummaryWording} onChange={(event) => updateDraft((draft) => { draft.requestCapture.callerSummaryWording = event.target.value; })} /></EditorField>
+        <EditorField label="Caller confirmation wording" className="md:col-span-2"><Textarea value={setup.requestCapture.callerSummaryWording} onChange={(event) => updateDraft((draft) => { draft.requestCapture.callerSummaryWording = event.target.value; })} /></EditorField>
         <Checkbox label="Send caller confirmation when relevant" checked={setup.callerConfirmations.sendBookingLinkWhenRelevant} onChange={(checked) => updateDraft((draft) => { draft.callerConfirmations.sendBookingLinkWhenRelevant = checked; })} />
       </div>
     );
@@ -889,13 +891,13 @@ function SectionEditor({
             <option value="paused">Paused</option>
           </Select>
         </EditorField>
-        <EditorField label="Ring delay seconds"><Input type="number" min={0} max={120} value={setup.callHandling.answerTiming.ringDelaySeconds} onChange={(event) => updateDraft((draft) => { draft.callHandling.answerTiming.ringDelaySeconds = Number(event.target.value); })} /></EditorField>
+        <EditorField label="Ring delay"><Input type="number" min={0} max={120} value={setup.callHandling.answerTiming.ringDelaySeconds} onChange={(event) => updateDraft((draft) => { draft.callHandling.answerTiming.ringDelaySeconds = Number(event.target.value); })} /></EditorField>
         <Checkbox label="Answer when closed" checked={setup.callHandling.answerTiming.answerWhenClosed} onChange={(checked) => updateDraft((draft) => { draft.callHandling.answerTiming.answerWhenClosed = checked; })} />
         <Checkbox label="Answer when busy" checked={setup.callHandling.answerTiming.answerWhenBusy} onChange={(checked) => updateDraft((draft) => { draft.callHandling.answerTiming.answerWhenBusy = checked; })} />
         <Checkbox label="Urgent routing enabled" checked={setup.urgentRouting.enabled} onChange={(checked) => updateDraft((draft) => { draft.urgentRouting.enabled = checked; })} />
         <Checkbox label="Spam screening enabled" checked={setup.spamScreening.enabled} onChange={(checked) => updateDraft((draft) => { draft.spamScreening.enabled = checked; })} />
-        <EditorField label="Urgent phrases" className="md:col-span-2"><Input value={setup.urgentRouting.detectionPhrases.join(", ")} onChange={(event) => updateDraft((draft) => { draft.urgentRouting.detectionPhrases = listFromText(event.target.value); })} /></EditorField>
-        <EditorField label="Spam screening wording" className="md:col-span-2"><Textarea value={setup.spamScreening.callerWording} onChange={(event) => updateDraft((draft) => { draft.spamScreening.callerWording = event.target.value; })} /></EditorField>
+        <EditorField label="Urgent words callers may say" className="md:col-span-2"><Input value={setup.urgentRouting.detectionPhrases.join(", ")} onChange={(event) => updateDraft((draft) => { draft.urgentRouting.detectionPhrases = listFromText(event.target.value); })} /></EditorField>
+        <EditorField label="Spam screening answer" className="md:col-span-2"><Textarea value={setup.spamScreening.callerWording} onChange={(event) => updateDraft((draft) => { draft.spamScreening.callerWording = event.target.value; })} /></EditorField>
       </div>
     );
   }
@@ -904,7 +906,7 @@ function SectionEditor({
     return (
       <div className="grid gap-4 md:grid-cols-2">
         <EditorField label="Caller greeting" className="md:col-span-2"><Textarea value={setup.callHandling.callerGreeting} onChange={(event) => updateDraft((draft) => { draft.callHandling.callerGreeting = event.target.value; })} /></EditorField>
-        <EditorField label="Primary language"><Input value={setup.business.primaryLanguage} onChange={(event) => updateDraft((draft) => { draft.business.primaryLanguage = event.target.value || "en"; })} /></EditorField>
+        <EditorField label="Primary language"><LanguageSelect value={setup.business.primaryLanguage} onChange={(value) => updateDraft((draft) => { draft.business.primaryLanguage = value; })} /></EditorField>
         <EditorField label="Pronunciation"><Input value={setup.business.pronunciation ?? ""} onChange={(event) => updateDraft((draft) => { draft.business.pronunciation = event.target.value || null; })} /></EditorField>
         <EditorField label="Call recording">
           <Select value={setup.privacy.callRecording} onChange={(event) => updateDraft((draft) => { draft.privacy.callRecording = event.target.value as AnsweringSetup["privacy"]["callRecording"]; })}>
@@ -925,7 +927,7 @@ function SectionEditor({
   if (sectionId === "safety_unknown") {
     return (
       <div className="grid gap-4 md:grid-cols-2">
-        <EditorField label="Unknown-question behavior">
+        <EditorField label="Unknown questions">
           <Select value={setup.callHandling.unknownAnswerBehavior} onChange={(event) => updateDraft((draft) => { draft.callHandling.unknownAnswerBehavior = event.target.value as AnsweringSetup["callHandling"]["unknownAnswerBehavior"]; })}>
             <option value="take_message_and_flag">Take message and flag</option>
             <option value="say_not_sure_and_offer_message">Say not sure and offer message</option>
@@ -940,7 +942,7 @@ function SectionEditor({
             <option value="on_with_disclosure">On with disclosure</option>
           </Select>
         </EditorField>
-        <EditorField label="Spam screening wording" className="md:col-span-2"><Textarea value={setup.spamScreening.callerWording} onChange={(event) => updateDraft((draft) => { draft.spamScreening.callerWording = event.target.value; })} /></EditorField>
+        <EditorField label="Spam screening answer" className="md:col-span-2"><Textarea value={setup.spamScreening.callerWording} onChange={(event) => updateDraft((draft) => { draft.spamScreening.callerWording = event.target.value; })} /></EditorField>
         <EditorField label="Caller disclosure" className="md:col-span-2"><Textarea value={setup.privacy.callerDisclosure} onChange={(event) => updateDraft((draft) => { draft.privacy.callerDisclosure = event.target.value; })} /></EditorField>
       </div>
     );
@@ -955,7 +957,7 @@ function SectionEditor({
             <div key={source.id} className="rounded-lg border border-slate-200 p-4">
               <div className="flex flex-wrap items-center gap-2">
                 <p className="text-sm font-semibold text-slate-900">{source.label}</p>
-                <Badge tone="neutral">{labelSbaValue(source.type)}</Badge>
+                <span className="text-xs font-semibold text-slate-500">{labelSbaValue(source.type)}</span>
               </div>
               {source.excerpt ? <p className="mt-2 text-sm leading-6 text-slate-500">{source.excerpt}</p> : null}
             </div>
@@ -965,7 +967,7 @@ function SectionEditor({
         </div>
       </div>
       <div>
-        <h3 className="text-sm font-semibold text-slate-950">Launch checklist</h3>
+        <h3 className="text-sm font-semibold text-slate-950">Before calls go live</h3>
         <div className="mt-3 space-y-2">
           {setup.activationGates.map((gate) => (
             <div key={gate.id} className="rounded-lg border border-slate-200 p-3">
@@ -1093,10 +1095,10 @@ function OwnerAlertsEditor({
       <section className="rounded-lg border border-slate-200 bg-white p-4">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <h3 className="text-sm font-semibold text-slate-950">Owner alert message</h3>
+            <h3 className="text-sm font-semibold text-slate-950">Owner message</h3>
             <p className="mt-1 text-sm leading-6 text-slate-500">This is an example of the summary you will receive after a caller leaves details.</p>
           </div>
-          {selectedTemplateId === "custom" ? <Badge tone="warning">Custom wording</Badge> : null}
+          {selectedTemplateId === "custom" ? <span className="text-xs font-semibold text-slate-500">Custom wording</span> : null}
         </div>
 
         <div className="mt-4 rounded-lg border border-blue-100 bg-blue-50 px-4 py-3">
@@ -1219,6 +1221,16 @@ function RequestFieldsSelector({
         );
       })}
     </div>
+  );
+}
+
+function LanguageSelect({ value, onChange }: { value: string; onChange: (value: string) => void }) {
+  return (
+    <Select value={value || "en"} onChange={(event) => onChange(event.target.value)}>
+      <option value="en">English</option>
+      <option value="es">Spanish</option>
+      <option value="fr">French</option>
+    </Select>
   );
 }
 
