@@ -298,7 +298,7 @@ export function SmallBusinessAnsweringTryClient({
   const callActiveRef = useRef(false);
   const mutedRef = useRef(false);
   const [liveState, setLiveState] = useState<LiveState>("idle");
-  const [liveMessage, setLiveMessage] = useState("Voice test will connect when the call starts.");
+  const [liveMessage, setLiveMessage] = useState("When you start, your browser will ask to use the microphone.");
   const [liveRuntimeIdentity, setLiveRuntimeIdentity] = useState<string | null>(null);
   const [liveAudioChunks, setLiveAudioChunks] = useState(0);
   const [micState, setMicState] = useState<MicState>("idle");
@@ -380,7 +380,7 @@ export function SmallBusinessAnsweringTryClient({
         text: setup.callHandling.callerGreeting || `Thanks for calling ${businessName}. How can I help today?`,
       },
     ]);
-    setLiveMessage("Requesting microphone access.");
+    setLiveMessage("Your browser is asking for microphone access. Choose Allow to test by speaking.");
     await startMicrophoneStream();
     void connectGeminiLive();
   }
@@ -418,7 +418,11 @@ export function SmallBusinessAnsweringTryClient({
 
       socket.onopen = () => {
         setLiveState("connected");
-        setLiveMessage("Connected to the voice test. Speak naturally into your browser.");
+        setLiveMessage(
+          liveCaptureRef.current
+            ? "Connected to the voice test. Speak naturally into your browser."
+            : "Connected. Use suggested phrases while microphone access is unavailable.",
+        );
         socket.send(JSON.stringify(payload.setupMessage));
       };
       socket.onmessage = async (event) => {
@@ -431,7 +435,11 @@ export function SmallBusinessAnsweringTryClient({
         const message = JSON.parse(rawMessage) as GeminiLiveMessage;
         if (message.setupComplete !== undefined) {
           setLiveState("ready");
-          setLiveMessage("Voice test is live. The setup can hear you and answer out loud.");
+          setLiveMessage(
+            liveCaptureRef.current
+              ? "Voice test is live. The setup can hear you and answer out loud."
+              : "Test session is ready. Use suggested phrases while microphone access is unavailable.",
+          );
         }
         if (message.serverContent?.interrupted) {
           stopQueuedLiveAudio();
@@ -878,6 +886,12 @@ export function SmallBusinessAnsweringTryClient({
             : liveState === "closed"
               ? "Call closed"
               : "Ready";
+  const micNeedsRecovery = micState === "blocked" || micState === "error";
+  const micRecoveryTitle = micState === "blocked" ? "Microphone access is blocked" : "Microphone is unavailable";
+  const micRecoveryMessage =
+    micState === "blocked"
+      ? "Use the site settings icon in your browser address bar, allow Microphone for this site, then try again."
+      : "This browser could not start the microphone. You can still test with the suggested phrases.";
   const progressItems = [
     { label: "Setup built", done: true },
     { label: "Voice test", done: callEnded || callActive },
@@ -983,6 +997,31 @@ export function SmallBusinessAnsweringTryClient({
                     {liveAudioChunks ? <span>Voice reply received</span> : null}
                   </div>
                 </div>
+
+                {!callActive && !callEnded ? (
+                  <div className="mt-4 rounded-[8px] border border-white/10 bg-white/[0.06] p-4 text-sm leading-6 text-white/70">
+                    Choose <span className="font-semibold text-white">Allow microphone</span> when the browser asks. The microphone is used only for this test call.
+                  </div>
+                ) : null}
+
+                {micNeedsRecovery ? (
+                  <div className="mt-4 rounded-[8px] border border-[#FFB020]/40 bg-[#FFB020]/10 p-4">
+                    <p className="text-sm font-semibold text-white">{micRecoveryTitle}</p>
+                    <p className="mt-1 text-sm leading-6 text-white/70">{micRecoveryMessage}</p>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={() => void startMicrophoneStream()}
+                        className="inline-flex h-10 items-center justify-center rounded-[8px] bg-white px-3 text-sm font-semibold text-[#0F1115] transition hover:bg-[#F3F5F8]"
+                      >
+                        Try microphone again
+                      </button>
+                      <span className="inline-flex h-10 items-center rounded-[8px] border border-white/10 px-3 text-sm font-semibold text-white/70">
+                        Suggested phrases still work
+                      </span>
+                    </div>
+                  </div>
+                ) : null}
 
                 <div className="mt-5 grid grid-cols-[56px_1fr] gap-3">
                   <button
