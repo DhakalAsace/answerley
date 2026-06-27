@@ -688,32 +688,223 @@ export function SmallBusinessAnsweringTryClient({
     return true;
   }
 
+  function toolArgs(value: unknown): Record<string, unknown> {
+    return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
+  }
+
+  function toolString(args: Record<string, unknown>, key: string) {
+    const value = args[key];
+    return typeof value === "string" && value.trim() ? value.trim() : null;
+  }
+
+  function toolValueLabel(value: unknown) {
+    if (value === null || value === undefined) return "Not provided";
+    if (typeof value === "string") return value;
+    if (typeof value === "number" || typeof value === "boolean") return String(value);
+    return JSON.stringify(value);
+  }
+
+  function lookupApprovedPlanFacts(question: string | null) {
+    const tokens = new Set((question ?? "").toLowerCase().match(/[a-z0-9]{4,}/g) ?? []);
+    const matches = (value: string | null | undefined) => {
+      const haystack = (value ?? "").toLowerCase();
+      return [...tokens].some((token) => haystack.includes(token));
+    };
+    const services = setup.services
+      .filter((service) => matches(`${service.name} ${service.approvedDescription ?? ""} ${service.pricingWording ?? ""} ${service.aliases.join(" ")}`))
+      .slice(0, 3)
+      .map((service) => ({
+        id: service.id,
+        name: service.name,
+        description: service.approvedDescription,
+        pricingWording: service.pricingWording,
+      }));
+    const answers = setup.approvedAnswers
+      .filter((answer) => matches(`${answer.question} ${answer.answer}`))
+      .slice(0, 3)
+      .map((answer) => ({
+        id: answer.id,
+        question: answer.question,
+        answer: answer.answer,
+      }));
+    return {
+      ok: true,
+      businessName,
+      services,
+      approvedAnswers: answers,
+      fallbackWording: "I do not have that confirmed, but I can take a message for the team.",
+    };
+  }
+
+  function liveToolOutcome(name: string, args: Record<string, unknown>): Omit<OutcomeCard, "id"> {
+    if (name === "record_collected_field") {
+      const fieldId = toolString(args, "fieldId") ?? "detail";
+      return {
+        type: "details",
+        title: `Captured ${formatLabel(fieldId.replace(/^field_/, ""))}`,
+        detail: toolValueLabel(args.value),
+        status: args.confirmed === false ? "Needs confirmation" : "Captured",
+      };
+    }
+    if (name === "create_request") {
+      return {
+        type: "request",
+        title: "Request captured",
+        detail: toolString(args, "callerSummary") ?? formatLabel(toolString(args, "requestTypeId") ?? "request"),
+        status: "Test request",
+      };
+    }
+    if (name === "capture_message") {
+      return {
+        type: "message",
+        title: "Message captured",
+        detail: toolString(args, "message") ?? "Message saved with this test call.",
+        status: "Captured",
+      };
+    }
+    if (name === "prepare_follow_up") {
+      return {
+        type: "followup",
+        title: "Follow-up prepared",
+        detail: formatLabel(toolString(args, "followUpId") ?? "follow up"),
+        status: "Ready after activation",
+      };
+    }
+    if (name === "prepare_owner_alert") {
+      return {
+        type: "alert",
+        title: "Owner alert prepared",
+        detail: toolString(args, "summary") ?? "Alert prepared for the business.",
+        status: formatLabel(toolString(args, "urgency") ?? "normal"),
+      };
+    }
+    if (name === "lookup_current_plan_info") {
+      return {
+        type: "details",
+        title: "Plan info checked",
+        detail: toolString(args, "question") ?? "Checked approved setup details.",
+        status: "Checked",
+      };
+    }
+    if (name === "record_unknown_question") {
+      return {
+        type: "details",
+        title: "Question flagged for review",
+        detail: toolString(args, "question") ?? "Question saved for setup improvement.",
+        status: "Needs answer",
+      };
+    }
+    if (name === "end_call_with_summary") {
+      return {
+        type: "details",
+        title: "Call closed with summary",
+        detail: toolString(args, "summary") ?? "The test call summary was saved.",
+        status: "Completed",
+      };
+    }
+    return {
+      type: name.includes("message") ? "message" : name.includes("alert") ? "alert" : name.includes("transfer") ? "transfer" : "details",
+      title: `Prepared action: ${formatLabel(name)}`,
+      detail: "Handled during this test.",
+      status: "Simulated",
+    };
+  }
+
+  function liveToolResult(name: string, args: Record<string, unknown>) {
+    if (name === "record_collected_field") {
+      return {
+        ok: true,
+        mode: "test",
+        stored: {
+          fieldId: toolString(args, "fieldId"),
+          value: args.value,
+          confirmed: args.confirmed === true,
+        },
+      };
+    }
+    if (name === "create_request") {
+      return {
+        ok: true,
+        mode: "test",
+        requestId: nextLocalId("test_request"),
+        requestTypeId: toolString(args, "requestTypeId"),
+        callerSummary: toolString(args, "callerSummary"),
+        status: "created_for_test",
+      };
+    }
+    if (name === "capture_message") {
+      return {
+        ok: true,
+        mode: "test",
+        messageId: nextLocalId("test_message"),
+        message: toolString(args, "message"),
+        status: "captured_for_test",
+      };
+    }
+    if (name === "prepare_follow_up") {
+      return {
+        ok: true,
+        mode: "test",
+        followUpId: toolString(args, "followUpId"),
+        status: "prepared_not_sent",
+      };
+    }
+    if (name === "prepare_owner_alert") {
+      return {
+        ok: true,
+        mode: "test",
+        alertId: nextLocalId("test_alert"),
+        urgency: toolString(args, "urgency") ?? "normal",
+        status: "prepared_not_sent",
+      };
+    }
+    if (name === "lookup_current_plan_info") {
+      return lookupApprovedPlanFacts(toolString(args, "question"));
+    }
+    if (name === "record_unknown_question") {
+      return {
+        ok: true,
+        mode: "test",
+        questionId: nextLocalId("unknown_question"),
+        question: toolString(args, "question"),
+        status: "flagged_for_review",
+      };
+    }
+    if (name === "end_call_with_summary") {
+      return {
+        ok: true,
+        mode: "test",
+        callId: nextLocalId("test_call"),
+        summary: toolString(args, "summary"),
+        outcome: toolString(args, "outcome"),
+        status: "closed",
+      };
+    }
+    return {
+      ok: true,
+      mode: "test",
+      note: "Test mode simulated this action. No outside messages were sent.",
+    };
+  }
+
   function handleLiveToolCall(
     socket: WebSocket,
     functionCalls: Array<{ id?: string; name?: string; args?: unknown }>,
   ) {
     const functionResponses = functionCalls.map((call) => {
       const name = call.name ?? "unknown_tool";
+      const args = toolArgs(call.args);
       const isEndCall = name === "end_call_with_summary";
-      addOutcome({
-        type: name.includes("message") ? "message" : name.includes("alert") ? "alert" : name.includes("transfer") ? "transfer" : "details",
-        title: isEndCall ? "Call closed with summary" : `Prepared action: ${formatLabel(name)}`,
-        detail: isEndCall ? "The representative wrapped up the call and saved the summary." : "Handled during this test.",
-        status: isEndCall ? "Completed" : "Simulated",
-      });
+      addOutcome(liveToolOutcome(name, args));
       if (isEndCall) {
         liveEndSummaryPendingRef.current = true;
-        setLiveMessage("The representative is wrapping up and closing the test call.");
+        setLiveMessage("The test call is wrapping up and saving the summary.");
       }
       return {
         id: call.id,
         name,
         response: {
-          result: {
-            ok: true,
-            mode: "test",
-            note: "Test mode simulated this action. No outside messages were sent.",
-          },
+          result: liveToolResult(name, args),
         },
       };
     });
