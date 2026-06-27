@@ -21,9 +21,10 @@ describe("Gemini Live runtime contract", () => {
       currentTime: "2026-06-24T18:00:00.000Z",
     });
     expect(runtime.layers.identity).toContain("Brightfield Services");
-    expect(runtime.layers.voiceAndSpeakingStyle).toMatch(/^Speak in .+\.$/);
+    expect(runtime.layers.voiceAndSpeakingStyle).toBe("Default.");
     expect(runtime.layers.voiceAndSpeakingStyle).not.toContain("front-desk");
     expect(runtime.layers.voiceAndSpeakingStyle).not.toContain("generic script");
+    expect(runtime.systemInstruction).not.toContain("<voice_and_speaking_style>");
     expect(runtime.layers.groundingRules).toContain("Do not infer missing prices");
     expect(runtime.layers.modeRules).toContain("TEST");
     expect(runtime.systemInstruction).toContain("<tool_policy>");
@@ -50,14 +51,14 @@ describe("Gemini Live runtime contract", () => {
     const liveConfig = buildGeminiLiveConnectConfig(runtime);
     expect(liveConfig.model).toBe("gemini-3.1-flash-live-preview");
     expect(liveConfig.config.responseModalities).toEqual(["AUDIO"]);
-    expect(liveConfig.config.speechConfig.voiceConfig.prebuiltVoiceConfig.voiceName).toBe("Puck");
+    expect(liveConfig.config).not.toHaveProperty("speechConfig");
     expect(liveConfig.config.systemInstruction.parts[0].text).toContain("<identity>");
     expect(liveConfig.config.tools?.[0].functionDeclarations[0]).toMatchObject({
       name: "record_collected_field",
       parameters: expect.objectContaining({ type: "object" }),
     });
     const webSocketSetup = buildGeminiLiveWebSocketSetup(runtime);
-    expect(webSocketSetup.setup.generationConfig.speechConfig.voiceConfig.prebuiltVoiceConfig.voiceName).toBe("Puck");
+    expect(webSocketSetup.setup.generationConfig).not.toHaveProperty("speechConfig");
     expect(webSocketSetup.setup).not.toHaveProperty("speechConfig");
   });
 });
