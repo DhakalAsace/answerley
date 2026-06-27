@@ -53,15 +53,14 @@ type ChatEntry = {
 };
 
 const welcomeText = [
-  "I can update the answering setup, answer what callers will hear, explain calls and requests, and send you to the right dashboard screen.",
-  "Changes to the setup are prepared for review before they are saved.",
+  "I can update the answering setup or answer questions about calls, requests, and appointments.",
+  "I will show setup changes before saving them.",
 ].join(" ");
 
 const defaultPrompts = [
   "What happens after hours?",
-  "Do not quote prices on calls.",
   "Change Friday closing to 4 PM.",
-  "What appointment requests were captured?",
+  "Show appointment requests.",
 ];
 
 function entryId(role: ChatEntry["role"]) {
@@ -133,7 +132,6 @@ function buildWorkspaceAnswer(params: {
       text: welcomeText,
       actions: [
         { label: "Review setup", href: "/dashboard/answering-setup" },
-        { label: "Open Test Center", href: "/dashboard/test-center" },
       ],
     };
   }
@@ -181,7 +179,7 @@ function buildWorkspaceAnswer(params: {
     return {
       id: entryId("assistant"),
       role: "assistant",
-      text: "Use Test Center to run caller scenarios against the current setup. Saved tests appear in Calls, Requests, Appointments, and Overview.",
+      text: "Use Test Center to run caller scenarios against the current setup. Saved tests appear in Calls, Requests, and Appointments.",
       actions: [{ label: "Open Test Center", href: "/dashboard/test-center" }],
     };
   }
@@ -246,7 +244,6 @@ export function SetupAssistantDock() {
       text: welcomeText,
       actions: [
         { label: "What happens after hours?", prompt: "What happens after hours?" },
-        { label: "Open Test Center", href: "/dashboard/test-center" },
       ],
     },
   ]);
@@ -382,8 +379,8 @@ export function SetupAssistantDock() {
             <div className="flex min-w-0 items-center gap-2">
               <span className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-[#17152a] text-white"><Sparkles className="size-4" /></span>
               <div className="min-w-0">
-                <p className="truncate text-sm font-semibold text-slate-950">Answering assistant</p>
-                <p className="truncate text-xs text-slate-500">Ask, update, review, or find the right screen</p>
+                <p className="truncate text-sm font-semibold text-slate-950">Assistant</p>
+                <p className="truncate text-xs text-slate-500">Ask or update setup</p>
               </div>
             </div>
             <button type="button" onClick={() => setOpen(false)} className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700" aria-label="Close answering assistant">
@@ -465,7 +462,7 @@ export function SetupAssistantDock() {
               value={instruction}
               onChange={(event) => setInstruction(event.target.value)}
               onKeyDown={handleKeyDown}
-              placeholder="Ask what callers will hear, or say what to change..."
+              placeholder="Ask or request a setup change..."
               className="min-h-20 resize-none"
             />
             <div className="mt-3 flex items-center gap-2">
@@ -491,7 +488,7 @@ export function SetupAssistantDock() {
         aria-expanded={open}
       >
         <MessageCircle className="size-5" />
-        Ask assistant
+        Assistant
       </button>
     </div>
   );

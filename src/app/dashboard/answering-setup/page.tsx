@@ -1,5 +1,5 @@
-import { AnsweringPlanOverviewClient } from "@/components/dashboard/answering-plan-overview-client";
+import { AnsweringSetupClient } from "@/components/dashboard/answering-setup-client";
 
 export default function AnsweringSetupPage() {
-  return <AnsweringPlanOverviewClient />;
+  return <AnsweringSetupClient />;
 }

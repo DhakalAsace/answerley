@@ -6,7 +6,6 @@ import {
   ArrowRight,
   CalendarCheck2,
   CheckCircle2,
-  Clock3,
   MessageSquareText,
   Mic,
   PhoneCall,
@@ -17,7 +16,6 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import {
-  calculateAnsweringSetupReadiness,
   demoAnsweringSetup,
   generateSetupTestPrompts,
   labelSbaValue,
@@ -63,7 +61,7 @@ function buildTestCall(setup: AnsweringSetup, prompt: SuggestedSetupTestPrompt):
         { id: "turn_confirm", speaker: "setup", text: setup.requestCapture.callerSummaryWording },
       ],
       outcomes: [
-        { id: "outcome_request", type: "request", title: "Appointment request captured", detail: "Preferred time: Thursday afternoon", status: "Ready for follow-up" },
+        { id: "outcome_request", type: "request", title: "Appointment request captured", detail: "Preferred time: Thursday afternoon", status: "Follow-up needed" },
         {
           id: "outcome_alert",
           type: "alert",
@@ -187,7 +185,6 @@ export function TestCenterClient() {
     };
   }, []);
 
-  const readiness = useMemo(() => calculateAnsweringSetupReadiness(setup), [setup]);
   const prompts = useMemo(() => generateSetupTestPrompts(setup), [setup]);
   const selectedPrompt = prompts.find((prompt) => prompt.id === selectedPromptId) ?? prompts[0];
   const latestOutcome = testCall?.outcomes[0] ?? null;
@@ -213,36 +210,13 @@ export function TestCenterClient() {
     <main className="mx-auto max-w-[1280px] px-4 py-5 sm:px-6 lg:px-8">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <div className="flex flex-wrap items-center gap-2">
-            <h1 className="text-2xl font-bold text-slate-950 sm:text-3xl">Test Center</h1>
-            <Badge tone={readiness.testReady ? "success" : "warning"}>{readiness.testReady ? "Ready to test" : "Needs setup"}</Badge>
-          </div>
+          <h1 className="text-2xl font-bold text-slate-950 sm:text-3xl">Test Center</h1>
           <p className="mt-1 max-w-2xl text-sm leading-6 text-slate-500">Choose a caller, run the call, and review what the business would receive.</p>
         </div>
         <Link href="/dashboard/answering-setup" className="inline-flex h-10 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700 hover:bg-slate-50">
           Edit setup <ArrowRight className="size-4" />
         </Link>
       </div>
-
-      <div className="mt-5 grid gap-3 md:grid-cols-3">
-        <StepCard number="1" title="Choose caller" state={selectedPrompt ? "Selected" : "Required"} active />
-        <StepCard number="2" title="Run test" state={testCall ? "Saved" : "Ready"} active={Boolean(selectedPrompt)} />
-        <StepCard number="3" title="Review result" state={testCall ? "Available" : "Waiting"} active={Boolean(testCall)} />
-      </div>
-
-      {!readiness.testReady && readiness.testBlockingGate ? (
-        <Card className="mt-4 border-amber-200 bg-amber-50 p-4 shadow-none">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <p className="text-sm font-semibold text-amber-950">{readiness.testBlockingGate.label} needs review before reliable tests.</p>
-              <p className="mt-1 text-sm text-amber-800">{readiness.testBlockingGate.description}</p>
-            </div>
-            <Link href="/dashboard/answering-setup" className="inline-flex h-10 items-center gap-2 rounded-lg bg-amber-900 px-3 text-sm font-semibold text-white">
-              Fix setup <ArrowRight className="size-4" />
-            </Link>
-          </div>
-        </Card>
-      ) : null}
 
       <div className="mt-5 grid gap-5 xl:grid-cols-[360px_minmax(0,1fr)]">
         <Card className="p-4 xl:sticky xl:top-5 xl:self-start">
@@ -295,7 +269,6 @@ export function TestCenterClient() {
                   <h2 className="font-semibold text-slate-950">{testCall ? "Review this test" : "Preview the call"}</h2>
                   <p className="mt-1 text-sm text-slate-500">{testCall ? "This is what the business can inspect before going live." : "Run the selected scenario to create a call review."}</p>
                 </div>
-                {testCall ? <Badge tone="success">Saved</Badge> : <Badge tone="neutral">Not run yet</Badge>}
               </div>
             </div>
 
@@ -344,7 +317,6 @@ export function TestCenterClient() {
                           <div key={outcome.id} className="rounded-lg bg-slate-50 p-3">
                             <div className="flex items-center justify-between gap-2">
                               <p className="text-sm font-semibold text-slate-900">{outcome.title}</p>
-                              <Badge tone={outcome.status === "Completed" ? "success" : outcome.status === "Needs review" ? "warning" : "info"}>{outcome.status}</Badge>
                             </div>
                             <p className="mt-1 text-xs leading-5 text-slate-500">{outcome.detail}</p>
                           </div>
@@ -379,38 +351,9 @@ export function TestCenterClient() {
               </aside>
             </div>
           </Card>
-
-          <Card className="p-4">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div className="flex items-center gap-2">
-                <Clock3 className="size-4 text-slate-500" />
-                <p className="text-sm font-semibold text-slate-900">What this test updates</p>
-              </div>
-              <Badge tone="info">Visible across dashboard</Badge>
-            </div>
-            <div className="mt-3 grid gap-2 md:grid-cols-3">
-              <SmallStatus title="Calls" text="Transcript and outcomes" />
-              <SmallStatus title="Requests" text="Captured caller need" />
-              <SmallStatus title="Overview" text="Latest activity and counts" />
-            </div>
-          </Card>
         </div>
       </div>
     </main>
-  );
-}
-
-function StepCard({ number, title, state, active }: { number: string; title: string; state: string; active: boolean }) {
-  return (
-    <Card className={cn("p-4 shadow-none", active ? "border-slate-300 bg-white" : "border-slate-200 bg-slate-50")}>
-      <div className="flex items-center gap-3">
-        <span className={cn("flex size-8 items-center justify-center rounded-md text-sm font-bold", active ? "bg-[#17152a] text-white" : "bg-slate-200 text-slate-500")}>{number}</span>
-        <div>
-          <p className="text-sm font-semibold text-slate-950">{title}</p>
-          <p className="text-xs font-semibold text-slate-500">{state}</p>
-        </div>
-      </div>
-    </Card>
   );
 }
 
@@ -419,15 +362,6 @@ function Fact({ label, value }: { label: string; value: string }) {
     <div className="rounded-lg border border-slate-200 bg-white p-3">
       <p className="text-xs font-semibold text-slate-400">{label}</p>
       <p className="mt-1 text-sm font-semibold text-slate-800">{value}</p>
-    </div>
-  );
-}
-
-function SmallStatus({ title, text }: { title: string; text: string }) {
-  return (
-    <div className="rounded-lg bg-slate-50 p-3">
-      <p className="text-sm font-semibold text-slate-900">{title}</p>
-      <p className="mt-1 text-xs text-slate-500">{text}</p>
     </div>
   );
 }

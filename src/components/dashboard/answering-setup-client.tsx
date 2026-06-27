@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { createElement, useEffect, useMemo, useRef, useState } from "react";
+import { createElement, useEffect, useRef, useState } from "react";
 import {
   Bell,
   Building2,
@@ -29,7 +29,6 @@ import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import {
-  calculateAnsweringSetupReadiness,
   demoAnsweringSetup,
   labelSbaValue,
   labelRequestField,
@@ -39,10 +38,8 @@ import {
   renderOwnerAlertTemplatePreview,
   selectedOwnerAlertTemplateId,
   setupSections,
-  setupSectionStatus,
   type AnsweringSetup,
   type RequestCaptureField,
-  type SetupGateStatus,
   type SetupSectionId,
 } from "@/domain/small-business-answering";
 import {
@@ -83,50 +80,41 @@ const setupHubSectionIds: SetupSectionId[] = [
   "sources_activation",
 ];
 
-const sectionPresentation: Record<SetupSectionId, { label: string; sublabel: string; description: string }> = {
+const sectionPresentation: Record<SetupSectionId, { label: string; description: string }> = {
   business: {
     label: "Business details",
-    sublabel: "Business profile",
     description: "Keep the caller-facing name, contact details, timezone, and service area accurate.",
   },
   services_answers: {
     label: "Services & answers",
-    sublabel: "What we can say",
     description: "Manage services, approved answers, and safe pricing wording callers may hear.",
   },
   hours_after_hours: {
     label: "Business hours",
-    sublabel: "When we answer",
     description: "Tell us when you are open so the answering plan uses the right flow.",
   },
   appointment_handling: {
     label: "Messages & intake",
-    sublabel: "What we collect",
     description: "Choose how appointment requests, callbacks, and caller details are captured.",
   },
   call_handling: {
     label: "Call handling",
-    sublabel: "When calls answer",
     description: "Control when calls are answered, how long the phone rings, and urgent routing.",
   },
   greeting_voice: {
     label: "Greeting & voice",
-    sublabel: "Caller greeting",
     description: "Set the greeting, language, recording disclosure, and pronunciation notes.",
   },
   owner_alerts: {
     label: "Owner alerts",
-    sublabel: "Needs review",
     description: "Choose who receives messages, urgent alerts, and owner summaries.",
   },
   safety_unknown: {
     label: "Safety & fallback",
-    sublabel: "Unknown questions",
     description: "Set safe fallback behavior for unknown questions, spam, privacy, and recording.",
   },
   sources_activation: {
     label: "Sources & launch",
-    sublabel: "Final review",
     description: "Review supporting sources, owner edits, and launch requirements before calls go live.",
   },
 };
@@ -145,18 +133,6 @@ const timeOptions = [
 
 type DayKey = keyof AnsweringSetup["hours"]["regular"];
 type SetupSection = (typeof setupSections)[number];
-
-function gateTone(status: SetupGateStatus | "complete") {
-  if (status === "complete") return "success";
-  if (status === "needs_review") return "warning";
-  return "danger";
-}
-
-function gateLabel(status: SetupGateStatus | "complete") {
-  if (status === "complete") return "Ready";
-  if (status === "needs_review") return "Needs review";
-  return "Required";
-}
 
 function listFromText(value: string) {
   return value.split(",").map((item) => item.trim()).filter(Boolean);
@@ -228,7 +204,7 @@ function sectionFacts(setup: AnsweringSetup, id: SetupSectionId) {
     case "sources_activation":
       return [
         `${setup.sources.length} sources`,
-        `${setup.activationGates.filter((gate) => gate.status !== "complete").length} items to review`,
+        `${setup.activationGates.length} launch items`,
       ];
   }
 }
@@ -239,298 +215,76 @@ function sectionHasCallerPreview(id: SetupSectionId) {
 
 function SetupHub({
   onSelectSection,
-  readiness,
   setup,
 }: {
   onSelectSection: (id: SetupSectionId) => void;
-  readiness: ReturnType<typeof calculateAnsweringSetupReadiness>;
   setup: AnsweringSetup;
 }) {
-  const sectionStates = setupHubSectionIds
+  const sections = setupHubSectionIds
     .map((id) => setupSections.find((section) => section.id === id))
-    .filter((section): section is SetupSection => Boolean(section))
-    .map((section) => ({ section, status: setupSectionStatus(setup, section) }));
-  const requiredSections = sectionStates.filter((item) => item.status === "blocked");
-  const reviewSections = sectionStates.filter((item) => item.status === "needs_review");
-  const readySections = sectionStates.filter((item) => item.status === "complete");
-  const nextSection = requiredSections[0] ?? reviewSections[0] ?? null;
-  const progressPercent = Math.round((readySections.length / sectionStates.length) * 100);
+    .filter((section): section is SetupSection => Boolean(section));
 
   return (
-    <section className="mt-8 space-y-7">
-      <Card className="overflow-hidden border-slate-200 bg-white p-0 shadow-[0_18px_48px_rgba(15,23,42,.06)]">
-        <div className="grid gap-0 lg:grid-cols-[1fr_1.15fr]">
-          <div className="border-b border-slate-100 p-6 lg:border-b-0 lg:border-r">
-            <div className="flex flex-wrap items-center justify-between gap-4">
-              <div>
-                <p className="text-sm font-semibold text-slate-500">Launch readiness</p>
-                <h2 className="mt-2 text-2xl font-semibold text-slate-950">{readiness.statusLabel}</h2>
-              </div>
-              <div className="text-right">
-                <p className="text-3xl font-semibold text-slate-950">{readySections.length}/{sectionStates.length}</p>
-                <p className="mt-1 text-xs font-semibold text-slate-500">setup areas ready</p>
-              </div>
-            </div>
-            <div className="mt-6 h-2 overflow-hidden rounded-full bg-slate-100">
-              <div className="h-full rounded-full bg-[#0757f8]" style={{ width: `${progressPercent}%` }} />
-            </div>
-            <div className="mt-5 grid grid-cols-3 gap-3">
-              <ReadinessMetric label="Required" value={requiredSections.length} tone="danger" />
-              <ReadinessMetric label="Needs review" value={reviewSections.length} tone="warning" />
-              <ReadinessMetric label="Ready" value={readySections.length} tone="success" />
-            </div>
-          </div>
-
-          {nextSection ? (
-            <NextSetupPanel
-              setup={setup}
-              section={nextSection.section}
-              status={nextSection.status}
-              onSelect={() => onSelectSection(nextSection.section.id)}
-            />
-          ) : (
-            <div className="flex min-h-[260px] items-center p-6">
-              <div className="w-full rounded-lg border border-emerald-200 bg-emerald-50 p-5">
-                <div className="flex items-start gap-4">
-                  <span className="flex size-12 shrink-0 items-center justify-center rounded-lg bg-white text-emerald-700">
-                    <CheckCircle2 className="size-6" />
-                  </span>
-                  <div>
-                    <p className="text-sm font-semibold text-emerald-700">All setup areas are ready</p>
-                    <h3 className="mt-1 text-xl font-semibold text-slate-950">Run a final test before going live.</h3>
-                    <p className="mt-2 text-sm leading-6 text-slate-700">The dashboard, assistant, and test calls are using this same saved setup.</p>
-                    <Link href="/dashboard/test-center" className="mt-4 inline-flex h-10 items-center gap-2 rounded-lg bg-[#0757f8] px-4 text-sm font-semibold text-white shadow-[0_10px_24px_rgba(7,87,248,.22)] hover:bg-[#0048d9]">
-                      Run test <ChevronRight className="size-4" />
-                    </Link>
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
+    <section className="mt-7">
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <h2 className="text-xl font-semibold text-slate-950">Setup areas</h2>
+          <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">
+            Review or edit the parts of the answering setup callers use.
+          </p>
         </div>
-      </Card>
+        <Link href="/dashboard/test-center" className="text-sm font-semibold text-[#0757f8] hover:text-[#0048d9]">
+          Test setup
+        </Link>
+      </div>
 
-      <div>
-        <div className="flex flex-wrap items-end justify-between gap-3">
-          <div>
-            <h2 className="text-xl font-semibold text-slate-950">Setup areas</h2>
-            <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">
-              Open one area at a time. Each detail screen edits the same answering setup used by tests and future calls.
-            </p>
-          </div>
-          <Link href="/dashboard/test-center" className="text-sm font-semibold text-[#0757f8] hover:text-[#0048d9]">
-            Run test
-          </Link>
-        </div>
-
-        <div className="mt-5 grid gap-5 xl:grid-cols-[1fr_1fr]">
-          <SetupSectionGroup
-            title="Required before launch"
-            description="Finish these first so callers can be handled safely."
-            emptyText="No required setup left."
-            items={requiredSections}
+      <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+        {sections.map((section) => (
+          <SetupSectionCard
+            key={section.id}
+            section={section}
             setup={setup}
-            onSelectSection={onSelectSection}
+            onSelect={() => onSelectSection(section.id)}
           />
-          <SetupSectionGroup
-            title="Needs review"
-            description="These are usable for testing but should be checked."
-            emptyText="Nothing needs review right now."
-            items={reviewSections}
-            setup={setup}
-            onSelectSection={onSelectSection}
-          />
-        </div>
-
-        <SetupSectionGroup
-          compact
-          title="Ready settings"
-          description="These areas are ready and can still be edited anytime."
-          emptyText="Ready settings will appear here as setup is completed."
-          items={readySections}
-          setup={setup}
-          onSelectSection={onSelectSection}
-        />
+        ))}
       </div>
     </section>
   );
 }
 
-function ReadinessMetric({ label, tone, value }: { label: string; tone: "danger" | "success" | "warning"; value: number }) {
-  return (
-    <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-3">
-      <div className="flex items-center gap-2">
-        <StatusDot tone={tone} />
-        <span className="text-lg font-semibold text-slate-950">{value}</span>
-      </div>
-      <p className="mt-1 text-xs font-semibold text-slate-500">{label}</p>
-    </div>
-  );
-}
-
-function StatusDot({ tone }: { tone: "danger" | "neutral" | "success" | "warning" }) {
-  return (
-    <span
-      className={cn(
-        "size-2.5 rounded-full",
-        tone === "danger" && "bg-red-500",
-        tone === "neutral" && "bg-slate-400",
-        tone === "success" && "bg-emerald-500",
-        tone === "warning" && "bg-amber-500",
-      )}
-    />
-  );
-}
-
-function statusDotTone(status: SetupGateStatus | "complete"): "danger" | "neutral" | "success" | "warning" {
-  if (status === "complete") return "success";
-  if (status === "needs_review") return "warning";
-  if (status === "blocked") return "danger";
-  return "neutral";
-}
-
-function NextSetupPanel({
+function SetupSectionCard({
   onSelect,
   section,
   setup,
-  status,
 }: {
   onSelect: () => void;
   section: SetupSection;
   setup: AnsweringSetup;
-  status: SetupGateStatus | "complete";
-}) {
-  const action = status === "blocked" ? `Set ${sectionLabel(section.id).toLowerCase()}` : `Review ${sectionLabel(section.id).toLowerCase()}`;
-
-  return (
-    <div className="p-6">
-      <p className="text-sm font-semibold text-slate-500">{status === "blocked" ? "Next required step" : "Next best review"}</p>
-      <button
-        type="button"
-        onClick={onSelect}
-        className={cn(
-          "mt-4 flex w-full items-start gap-5 rounded-lg border p-5 text-left transition hover:-translate-y-0.5 hover:shadow-[0_18px_40px_rgba(15,23,42,.08)]",
-          status === "blocked" ? "border-red-200 bg-red-50/60" : "border-amber-200 bg-amber-50/60",
-        )}
-      >
-        <span className={cn("flex size-12 shrink-0 items-center justify-center rounded-lg bg-white", status === "blocked" ? "text-red-600" : "text-amber-600")}>
-          {setupSectionGlyph(section, "size-6")}
-        </span>
-        <span className="min-w-0 flex-1">
-          <span className="flex flex-wrap items-center gap-2">
-            <span className="text-lg font-semibold text-slate-950">{sectionLabel(section.id)}</span>
-            <Badge tone={gateTone(status)}>{gateLabel(status)}</Badge>
-          </span>
-          <span className="mt-2 block max-w-2xl text-sm leading-6 text-slate-700">{sectionDescription(section.id)}</span>
-          <span className="mt-4 flex flex-wrap gap-2">
-            {sectionFacts(setup, section.id).map((fact) => (
-              <span key={fact} className="rounded-full border border-white/80 bg-white px-2.5 py-1 text-xs font-semibold capitalize text-slate-700">
-                {fact}
-              </span>
-            ))}
-          </span>
-          <span className="mt-5 inline-flex h-10 items-center gap-2 rounded-lg bg-[#0757f8] px-4 text-sm font-semibold text-white shadow-[0_10px_24px_rgba(7,87,248,.2)]">
-            {action} <ChevronRight className="size-4" />
-          </span>
-        </span>
-      </button>
-    </div>
-  );
-}
-
-function SetupSectionGroup({
-  compact = false,
-  description,
-  emptyText,
-  items,
-  onSelectSection,
-  setup,
-  title,
-}: {
-  compact?: boolean;
-  description: string;
-  emptyText: string;
-  items: Array<{ section: SetupSection; status: SetupGateStatus | "complete" }>;
-  onSelectSection: (id: SetupSectionId) => void;
-  setup: AnsweringSetup;
-  title: string;
-}) {
-  return (
-    <section className={cn("rounded-lg border border-slate-200 bg-white shadow-[0_12px_30px_rgba(15,23,42,.04)]", compact && "mt-5")}>
-      <div className="border-b border-slate-100 px-5 py-4">
-        <div className="flex items-center justify-between gap-3">
-          <div>
-            <h3 className="font-semibold text-slate-950">{title}</h3>
-            <p className="mt-1 text-sm leading-6 text-slate-600">{description}</p>
-          </div>
-          <Badge tone={items.length ? "neutral" : "success"}>{items.length}</Badge>
-        </div>
-      </div>
-
-      {items.length ? (
-        <div className={cn("divide-y divide-slate-100", compact && "grid divide-y-0 md:grid-cols-2 xl:grid-cols-3")}>
-          {items.map(({ section, status }) => (
-            <SetupSectionRow
-              key={section.id}
-              compact={compact}
-              section={section}
-              setup={setup}
-              status={status}
-              onSelect={() => onSelectSection(section.id)}
-            />
-          ))}
-        </div>
-      ) : (
-        <div className="px-5 py-6 text-sm font-medium text-slate-500">{emptyText}</div>
-      )}
-    </section>
-  );
-}
-
-function SetupSectionRow({
-  compact = false,
-  onSelect,
-  section,
-  setup,
-  status,
-}: {
-  compact?: boolean;
-  onSelect: () => void;
-  section: SetupSection;
-  setup: AnsweringSetup;
-  status: SetupGateStatus | "complete";
 }) {
   return (
     <button
       type="button"
       onClick={onSelect}
-      className={cn(
-        "group flex w-full items-start gap-4 px-5 py-4 text-left transition hover:bg-slate-50",
-        compact && "border-b border-r border-slate-100 last:border-b-0",
-      )}
+      className="group flex min-h-[158px] w-full flex-col rounded-lg border border-slate-200 bg-white p-4 text-left shadow-[0_10px_24px_rgba(15,23,42,.035)] transition hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-[0_16px_34px_rgba(15,23,42,.07)]"
     >
-      <span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-[#0757f8]">
-        {setupSectionGlyph(section, "size-5")}
-      </span>
-      <span className="min-w-0 flex-1">
-        <span className="flex flex-wrap items-center gap-2">
-          <span className="font-semibold text-slate-950">{sectionLabel(section.id)}</span>
-          <StatusDot tone={statusDotTone(status)} />
-          <span className="text-xs font-semibold text-slate-500">{gateLabel(status)}</span>
+      <span className="flex items-start gap-3">
+        <span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-slate-50 text-slate-700">
+          {setupSectionGlyph(section, "size-5")}
         </span>
-        <span className="mt-1 block text-sm leading-6 text-slate-600">{compact ? sectionFacts(setup, section.id).join(" · ") : sectionDescription(section.id)}</span>
-        {!compact ? (
-          <span className="mt-3 flex flex-wrap gap-2">
-            {sectionFacts(setup, section.id).map((fact) => (
-              <span key={fact} className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-semibold capitalize text-slate-600">
-                {fact}
-              </span>
-            ))}
-          </span>
-        ) : null}
+        <span className="min-w-0 flex-1">
+          <span className="block font-semibold text-slate-950">{sectionLabel(section.id)}</span>
+          <span className="mt-1 block text-sm leading-6 text-slate-600">{sectionDescription(section.id)}</span>
+        </span>
       </span>
-      <span className="mt-1 flex size-8 shrink-0 items-center justify-center rounded-lg border border-slate-200 text-slate-500 transition group-hover:border-[#0757f8] group-hover:text-[#0757f8]">
-        <ChevronRight className="size-4" />
+      <span className="mt-4 flex flex-wrap gap-2">
+        {sectionFacts(setup, section.id).map((fact) => (
+          <span key={fact} className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-semibold capitalize text-slate-600">
+            {fact}
+          </span>
+        ))}
+      </span>
+      <span className="mt-auto inline-flex items-center gap-1 pt-4 text-sm font-semibold text-slate-950">
+        Edit <ChevronRight className="size-4 transition group-hover:translate-x-0.5" />
       </span>
     </button>
   );
@@ -540,13 +294,11 @@ function SetupSectionDetail({
   onBack,
   section,
   setup,
-  status,
   updateDraft,
 }: {
   onBack: () => void;
   section: SetupSection;
   setup: AnsweringSetup;
-  status: SetupGateStatus | "complete";
   updateDraft: (mutator: (draft: AnsweringSetup) => void) => void;
 }) {
   const showCallerPreview = sectionHasCallerPreview(section.id);
@@ -570,7 +322,6 @@ function SetupSectionDetail({
                 <h2 className="text-lg font-semibold text-slate-950">{sectionLabel(section.id)}</h2>
                 <p className="mt-1 max-w-2xl text-sm leading-6 text-slate-600">{sectionDescription(section.id)}</p>
               </div>
-              <Badge tone={gateTone(status)}>{gateLabel(status)}</Badge>
             </div>
             <div className="mt-4 flex flex-wrap gap-2">
               {sectionFacts(setup, section.id).map((fact) => (
@@ -591,12 +342,11 @@ function SetupSectionDetail({
   );
 }
 
-export function AnsweringPlanOverviewClient() {
+export function AnsweringSetupClient() {
   const [setup, setSetup] = useState<AnsweringSetup>(demoAnsweringSetup);
   const setupRef = useRef<AnsweringSetup>(demoAnsweringSetup);
   const hasUnsavedChangesRef = useRef(false);
   const [selectedSectionId, setSelectedSectionId] = useState<SetupSectionId | null>(null);
-  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [saveState, setSaveState] = useState<"idle" | "saving" | "saved">("idle");
 
   useEffect(() => {
@@ -618,7 +368,6 @@ export function AnsweringPlanOverviewClient() {
     };
   }, []);
 
-  const readiness = useMemo(() => calculateAnsweringSetupReadiness(setup), [setup]);
   const selectedSection = selectedSectionId
     ? setupSections.find((section) => section.id === selectedSectionId) ?? null
     : null;
@@ -629,7 +378,6 @@ export function AnsweringPlanOverviewClient() {
     setupRef.current = draft;
     setSetup(draft);
     hasUnsavedChangesRef.current = true;
-    setHasUnsavedChanges(true);
     setSaveState("idle");
   }
 
@@ -644,7 +392,6 @@ export function AnsweringPlanOverviewClient() {
     setupRef.current = savedSetup;
     setSetup(savedSetup);
     hasUnsavedChangesRef.current = false;
-    setHasUnsavedChanges(false);
     setSaveState("saved");
   }
 
@@ -652,22 +399,9 @@ export function AnsweringPlanOverviewClient() {
     <main className="mx-auto max-w-[1264px] px-4 py-5 sm:px-6 lg:px-8">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <div className="flex flex-wrap items-center gap-3">
-            <h1 className="text-[31px] font-semibold leading-tight text-slate-950">Answering Setup</h1>
-            <Badge
-              tone={readiness.liveReady ? "success" : "warning"}
-              className={cn(
-                "border-0 px-3 py-1.5 text-sm",
-                readiness.liveReady ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700",
-              )}
-            >
-              {readiness.liveReady ? "Ready" : "Draft"}
-            </Badge>
-            {hasUnsavedChanges ? <Badge tone="warning">Unsaved changes</Badge> : saveState === "saved" ? <Badge tone="success">Saved</Badge> : null}
-          </div>
-          <p className="mt-3 flex items-center gap-2 text-sm leading-6 text-slate-600">
-            <CheckCircle2 className="size-4 text-emerald-600" />
-            You are editing your answering plan. Save changes when this section looks right.
+          <h1 className="text-[31px] font-semibold leading-tight text-slate-950">Answering Setup</h1>
+          <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-600">
+            Manage the information the answering service uses with callers.
           </p>
         </div>
         <div className="flex flex-wrap gap-3">
@@ -688,12 +422,11 @@ export function AnsweringPlanOverviewClient() {
         <SetupSectionDetail
           section={selectedSection}
           setup={setup}
-          status={setupSectionStatus(setup, selectedSection)}
           onBack={() => setSelectedSectionId(null)}
           updateDraft={updateDraft}
         />
       ) : (
-        <SetupHub readiness={readiness} setup={setup} onSelectSection={setSelectedSectionId} />
+        <SetupHub setup={setup} onSelectSection={setSelectedSectionId} />
       )}
     </main>
   );
@@ -1232,12 +965,11 @@ function SectionEditor({
         </div>
       </div>
       <div>
-        <h3 className="text-sm font-semibold text-slate-950">Launch requirements</h3>
+        <h3 className="text-sm font-semibold text-slate-950">Launch checklist</h3>
         <div className="mt-3 space-y-2">
           {setup.activationGates.map((gate) => (
-            <div key={gate.id} className="flex items-center justify-between gap-3 rounded-lg border border-slate-200 p-3">
+            <div key={gate.id} className="rounded-lg border border-slate-200 p-3">
               <span className="text-sm font-semibold text-slate-800">{gate.label}</span>
-              <Badge tone={gateTone(gate.status)}>{gateLabel(gate.status)}</Badge>
             </div>
           ))}
         </div>

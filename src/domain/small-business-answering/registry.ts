@@ -158,7 +158,7 @@ export const setupSections: SetupSectionDefinition[] = [
     description: "Website evidence, owner edits, activation gates, billing, phone routing, and final approval.",
     setupPaths: ["/sources", "/activationGates"],
     gateIds: ["billing", "final_test"],
-    dashboardSurface: "Overview / Answering Setup",
+    dashboardSurface: "Answering Setup",
     runtimeLayer: "audit + publish gates",
     icon: "file-search",
   },

@@ -24,7 +24,7 @@ export default function Home() {
           <nav className="hidden items-center gap-8 text-sm font-semibold text-slate-500 md:flex">
             <a href="#how-it-works" className="hover:text-slate-950">How it works</a>
             <a href="#capabilities" className="hover:text-slate-950">What it handles</a>
-            <Link href="/dashboard/overview" className="hover:text-slate-950">Dashboard</Link>
+            <Link href="/dashboard/calls" className="hover:text-slate-950">Dashboard</Link>
           </nav>
           <div className="flex items-center gap-2">
             <button className="hidden rounded-xl px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100 sm:block">Log in</button>
