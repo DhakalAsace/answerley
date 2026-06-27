@@ -147,7 +147,8 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
               aria-label="Open dashboard navigation"
               aria-expanded={mobileNavOpen}
               onClick={() => setMobileNavOpen(true)}
-              className="fixed right-4 top-3 z-40 inline-flex size-10 items-center justify-center rounded-[8px] border border-[#D6DAE1] bg-white text-[#111827] shadow-[0_6px_14px_rgba(15,17,21,.05)] transition active:translate-y-px"
+              style={{ left: "min(calc(100dvw - 3.5rem), 20.75rem)" }}
+              className="fixed top-3 z-40 inline-flex size-10 items-center justify-center rounded-[8px] border border-[#D6DAE1] bg-white text-[#111827] shadow-[0_6px_14px_rgba(15,17,21,.05)] transition active:translate-y-px"
             >
               <Menu className="size-5" />
             </button>
