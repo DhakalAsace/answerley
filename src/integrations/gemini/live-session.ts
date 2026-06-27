@@ -30,9 +30,7 @@ export function buildGeminiLiveWebSocketSetup(runtime: LiveRuntimePack) {
   return {
     setup: {
       model: `models/${runtime.model}`,
-      generationConfig: {
-        responseModalities,
-      },
+      responseModalities,
       ...setupConfig,
     },
   };

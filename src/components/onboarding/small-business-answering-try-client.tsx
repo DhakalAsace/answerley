@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
+  AudioLines,
   ArrowLeft,
   ArrowRight,
   Bell,
@@ -26,10 +27,8 @@ import {
   Save,
   Send,
   ShieldAlert,
-  Sparkles,
   WandSparkles,
 } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Field } from "@/components/ui/field";
@@ -72,13 +71,109 @@ type LiveSessionPayload = {
 type GeminiLiveMessage = {
   setupComplete?: unknown;
   serverContent?: {
+    inputTranscription?: { text?: string };
     outputTranscription?: { text?: string };
-    modelTurn?: { parts?: Array<{ inlineData?: { data?: string } }> };
+    interrupted?: boolean;
+    modelTurn?: { parts?: Array<{ inlineData?: { data?: string; mimeType?: string } }> };
     generationComplete?: boolean;
     turnComplete?: boolean;
   };
   toolCall?: { functionCalls?: Array<{ id?: string; name?: string; args?: unknown }> };
 };
+
+type MicState = "idle" | "requesting" | "active" | "muted" | "blocked" | "error";
+type LiveAudioCapture = {
+  context: AudioContext;
+  source: MediaStreamAudioSourceNode;
+  processor: ScriptProcessorNode;
+  stream: MediaStream;
+  pending: Float32Array;
+  lastLevelUpdate: number;
+};
+
+const LIVE_INPUT_SAMPLE_RATE = 16000;
+const LIVE_OUTPUT_SAMPLE_RATE = 24000;
+const LIVE_AUDIO_CHUNK_SIZE = 1600;
+const LIVE_AUDIO_PROCESSOR_SIZE = 4096;
+
+function createAudioContext() {
+  const AudioContextClass =
+    window.AudioContext ??
+    (window as Window & typeof globalThis & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+  if (!AudioContextClass) throw new Error("Browser audio is not available.");
+  return new AudioContextClass();
+}
+
+function concatFloat32(left: Float32Array, right: Float32Array) {
+  if (!left.length) return right;
+  const output = new Float32Array(left.length + right.length);
+  output.set(left);
+  output.set(right, left.length);
+  return output;
+}
+
+function downsampleAudio(input: Float32Array, inputRate: number, outputRate: number) {
+  if (inputRate === outputRate) return new Float32Array(input);
+  if (inputRate < outputRate) return new Float32Array(input);
+
+  const ratio = inputRate / outputRate;
+  const outputLength = Math.floor(input.length / ratio);
+  const output = new Float32Array(outputLength);
+  for (let index = 0; index < outputLength; index += 1) {
+    const start = Math.floor(index * ratio);
+    const end = Math.min(Math.floor((index + 1) * ratio), input.length);
+    let sum = 0;
+    let count = 0;
+    for (let cursor = start; cursor < end; cursor += 1) {
+      sum += input[cursor] ?? 0;
+      count += 1;
+    }
+    output[index] = count ? sum / count : input[start] ?? 0;
+  }
+  return output;
+}
+
+function float32ToPcm16Base64(samples: Float32Array) {
+  const bytes = new Uint8Array(samples.length * 2);
+  const view = new DataView(bytes.buffer);
+  samples.forEach((sample, index) => {
+    const clamped = Math.max(-1, Math.min(1, sample));
+    view.setInt16(index * 2, clamped < 0 ? clamped * 0x8000 : clamped * 0x7fff, true);
+  });
+  let binary = "";
+  bytes.forEach((byte) => {
+    binary += String.fromCharCode(byte);
+  });
+  return btoa(binary);
+}
+
+function pcm16Base64ToFloat32(base64: string) {
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index += 1) {
+    bytes[index] = binary.charCodeAt(index);
+  }
+  const view = new DataView(bytes.buffer);
+  const samples = new Float32Array(Math.floor(bytes.byteLength / 2));
+  for (let index = 0; index < samples.length; index += 1) {
+    samples[index] = view.getInt16(index * 2, true) / 0x8000;
+  }
+  return samples;
+}
+
+function sampleRateFromMimeType(mimeType?: string) {
+  const match = mimeType?.match(/rate=(\d+)/i);
+  return match ? Number(match[1]) : LIVE_OUTPUT_SAMPLE_RATE;
+}
+
+function calculateRms(samples: Float32Array) {
+  if (!samples.length) return 0;
+  let sum = 0;
+  samples.forEach((sample) => {
+    sum += sample * sample;
+  });
+  return Math.min(1, Math.sqrt(sum / samples.length) * 5);
+}
 
 let localIdCounter = 0;
 function nextLocalId(prefix: string) {
@@ -194,11 +289,20 @@ export function SmallBusinessAnsweringTryClient({
   const [alertPhone, setAlertPhone] = useState("");
   const [email, setEmail] = useState("");
   const liveSocketRef = useRef<WebSocket | null>(null);
+  const liveCaptureRef = useRef<LiveAudioCapture | null>(null);
+  const liveInputTurnIdRef = useRef<string | null>(null);
   const liveResponseTurnIdRef = useRef<string | null>(null);
+  const liveOutputAudioContextRef = useRef<AudioContext | null>(null);
+  const liveOutputSourcesRef = useRef<AudioBufferSourceNode[]>([]);
+  const liveOutputPlaybackTimeRef = useRef(0);
+  const callActiveRef = useRef(false);
+  const mutedRef = useRef(false);
   const [liveState, setLiveState] = useState<LiveState>("idle");
-  const [liveMessage, setLiveMessage] = useState("Voice preview will connect when the test call starts.");
+  const [liveMessage, setLiveMessage] = useState("Voice test will connect when the call starts.");
   const [liveRuntimeIdentity, setLiveRuntimeIdentity] = useState<string | null>(null);
   const [liveAudioChunks, setLiveAudioChunks] = useState(0);
+  const [micState, setMicState] = useState<MicState>("idle");
+  const [micLevel, setMicLevel] = useState(0);
 
   const finishBuild = useCallback(async () => {
     const websiteUrl = normalizeWebsiteInput(businessInput);
@@ -248,20 +352,27 @@ export function SmallBusinessAnsweringTryClient({
     return () => window.clearInterval(interval);
   }, [finishBuild, phase]);
 
-  useEffect(() => () => {
-    if (liveSocketRef.current) {
-      liveSocketRef.current.close();
-      liveSocketRef.current = null;
+  useEffect(() => {
+    mutedRef.current = muted;
+    if (liveCaptureRef.current && callActive) {
+      setMicState(muted ? "muted" : "active");
     }
-  }, []);
+  }, [callActive, muted]);
+
+  useEffect(() => {
+    callActiveRef.current = callActive;
+  }, [callActive]);
 
   const suggestions = useMemo(() => generateSetupTestPrompts(setup), [setup]);
   const readiness = useMemo(() => calculateAnsweringSetupReadiness(setup), [setup]);
   const businessName = setup.business.name || "Your Business";
 
-  function startCall() {
+  async function startCall() {
+    if (callActiveRef.current) return;
     setCallActive(true);
     setCallEnded(false);
+    setUnknownQuestion(null);
+    stopQueuedLiveAudio();
     setTranscript([
       {
         id: nextLocalId("turn"),
@@ -269,12 +380,16 @@ export function SmallBusinessAnsweringTryClient({
         text: setup.callHandling.callerGreeting || `Thanks for calling ${businessName}. How can I help today?`,
       },
     ]);
+    setLiveMessage("Requesting microphone access.");
+    await startMicrophoneStream();
     void connectGeminiLive();
   }
 
   function endCall() {
     setCallActive(false);
     setCallEnded(true);
+    stopMicrophoneStream();
+    stopQueuedLiveAudio();
     if (liveSocketRef.current) {
       liveSocketRef.current.close();
       liveSocketRef.current = null;
@@ -286,7 +401,7 @@ export function SmallBusinessAnsweringTryClient({
   async function connectGeminiLive() {
     if (liveSocketRef.current && liveSocketRef.current.readyState === WebSocket.OPEN) return;
     setLiveState("starting");
-    setLiveMessage("Starting the voice preview for this test call.");
+    setLiveMessage("Starting the voice test for this call.");
     setLiveAudioChunks(0);
     try {
       const response = await fetch("/api/dev/live-session", {
@@ -295,7 +410,7 @@ export function SmallBusinessAnsweringTryClient({
         body: JSON.stringify({ setup, mode: "test" }),
       });
       const body = await response.json();
-      if (!response.ok) throw new Error(body.error ?? "Voice preview failed.");
+      if (!response.ok) throw new Error(body.error ?? "Voice test failed.");
       const payload = body as LiveSessionPayload;
       setLiveRuntimeIdentity(payload.runtime.identity);
       const socket = new WebSocket(payload.webSocketUrl);
@@ -303,7 +418,7 @@ export function SmallBusinessAnsweringTryClient({
 
       socket.onopen = () => {
         setLiveState("connected");
-        setLiveMessage("Connected to voice preview. Call handling is ready.");
+        setLiveMessage("Connected to the voice test. Speak naturally into your browser.");
         socket.send(JSON.stringify(payload.setupMessage));
       };
       socket.onmessage = async (event) => {
@@ -316,7 +431,14 @@ export function SmallBusinessAnsweringTryClient({
         const message = JSON.parse(rawMessage) as GeminiLiveMessage;
         if (message.setupComplete !== undefined) {
           setLiveState("ready");
-          setLiveMessage("Voice preview is ready. Typed prompts also go to the test call.");
+          setLiveMessage("Voice test is live. The setup can hear you and answer out loud.");
+        }
+        if (message.serverContent?.interrupted) {
+          stopQueuedLiveAudio();
+        }
+        const input = message.serverContent?.inputTranscription?.text;
+        if (input?.trim()) {
+          appendLiveCallerTurn(input);
         }
         const output = message.serverContent?.outputTranscription?.text;
         if (output?.trim()) {
@@ -325,18 +447,26 @@ export function SmallBusinessAnsweringTryClient({
         if (message.serverContent?.generationComplete || message.serverContent?.turnComplete) {
           liveResponseTurnIdRef.current = null;
         }
+        if (message.serverContent?.turnComplete) {
+          liveInputTurnIdRef.current = null;
+        }
         const parts = message.serverContent?.modelTurn?.parts ?? [];
         const audioChunks = parts.filter((part) => Boolean(part.inlineData?.data)).length;
         if (audioChunks) {
           setLiveAudioChunks((current) => current + audioChunks);
         }
+        parts.forEach((part) => {
+          if (part.inlineData?.data) {
+            playLiveAudio(part.inlineData.data, part.inlineData.mimeType);
+          }
+        });
         if (message.toolCall?.functionCalls?.length) {
           handleLiveToolCall(socket, message.toolCall.functionCalls);
         }
       };
       socket.onerror = () => {
         setLiveState("error");
-        setLiveMessage("The voice preview reported an error. The simulated test still works.");
+        setLiveMessage("The voice test reported an error. You can still use typed prompts.");
       };
       socket.onclose = () => {
         if (liveSocketRef.current === socket) liveSocketRef.current = null;
@@ -344,9 +474,161 @@ export function SmallBusinessAnsweringTryClient({
       };
     } catch (error) {
       setLiveState("error");
-      setLiveMessage(error instanceof Error ? error.message : "Voice preview failed.");
+      setLiveMessage(error instanceof Error ? error.message : "Voice test failed.");
     }
   }
+
+  async function startMicrophoneStream() {
+    stopMicrophoneStream();
+    setMicLevel(0);
+
+    if (!navigator.mediaDevices?.getUserMedia) {
+      setMicState("error");
+      setLiveMessage("This browser cannot use the microphone for the voice test.");
+      return false;
+    }
+
+    setMicState("requesting");
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          channelCount: 1,
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+        },
+      });
+      const context = createAudioContext();
+      await context.resume();
+      const source = context.createMediaStreamSource(stream);
+      const processor = context.createScriptProcessor(LIVE_AUDIO_PROCESSOR_SIZE, 1, 1);
+      const capture: LiveAudioCapture = {
+        context,
+        source,
+        processor,
+        stream,
+        pending: new Float32Array(),
+        lastLevelUpdate: 0,
+      };
+
+      processor.onaudioprocess = (event) => {
+        const input = event.inputBuffer.getChannelData(0);
+        const now = Date.now();
+        if (now - capture.lastLevelUpdate > 120) {
+          capture.lastLevelUpdate = now;
+          setMicLevel(calculateRms(input));
+        }
+
+        const socket = liveSocketRef.current;
+        if (!socket || socket.readyState !== WebSocket.OPEN || !callActiveRef.current || mutedRef.current) return;
+
+        const downsampled = downsampleAudio(input, context.sampleRate, LIVE_INPUT_SAMPLE_RATE);
+        capture.pending = concatFloat32(capture.pending, downsampled);
+
+        while (capture.pending.length >= LIVE_AUDIO_CHUNK_SIZE) {
+          const chunk = capture.pending.slice(0, LIVE_AUDIO_CHUNK_SIZE);
+          capture.pending = capture.pending.slice(LIVE_AUDIO_CHUNK_SIZE);
+          socket.send(JSON.stringify({
+            realtimeInput: {
+              audio: {
+                data: float32ToPcm16Base64(chunk),
+                mimeType: `audio/pcm;rate=${LIVE_INPUT_SAMPLE_RATE}`,
+              },
+            },
+          }));
+        }
+      };
+
+      source.connect(processor);
+      processor.connect(context.destination);
+      liveCaptureRef.current = capture;
+      setMicState(muted ? "muted" : "active");
+      setLiveMessage("Microphone is ready. Connecting the answering voice.");
+      return true;
+    } catch (error) {
+      setMicState(error instanceof DOMException && error.name === "NotAllowedError" ? "blocked" : "error");
+      setLiveMessage(
+        error instanceof DOMException && error.name === "NotAllowedError"
+          ? "Microphone permission was blocked. Typed prompts still work."
+          : "Microphone setup failed. Typed prompts still work.",
+      );
+      return false;
+    }
+  }
+
+  function stopMicrophoneStream() {
+    const capture = liveCaptureRef.current;
+    if (!capture) {
+      setMicLevel(0);
+      if (!callActiveRef.current) setMicState("idle");
+      return;
+    }
+    capture.processor.disconnect();
+    capture.source.disconnect();
+    capture.stream.getTracks().forEach((track) => track.stop());
+    void capture.context.close();
+    liveCaptureRef.current = null;
+    setMicLevel(0);
+    setMicState("idle");
+  }
+
+  function getLiveOutputContext() {
+    if (!liveOutputAudioContextRef.current || liveOutputAudioContextRef.current.state === "closed") {
+      liveOutputAudioContextRef.current = createAudioContext();
+      liveOutputPlaybackTimeRef.current = liveOutputAudioContextRef.current.currentTime;
+    }
+    return liveOutputAudioContextRef.current;
+  }
+
+  function playLiveAudio(base64: string, mimeType?: string) {
+    try {
+      const context = getLiveOutputContext();
+      void context.resume();
+      const samples = pcm16Base64ToFloat32(base64);
+      if (!samples.length) return;
+      const sampleRate = sampleRateFromMimeType(mimeType);
+      const buffer = context.createBuffer(1, samples.length, sampleRate);
+      buffer.copyToChannel(samples, 0);
+      const source = context.createBufferSource();
+      source.buffer = buffer;
+      source.connect(context.destination);
+      source.onended = () => {
+        liveOutputSourcesRef.current = liveOutputSourcesRef.current.filter((item) => item !== source);
+      };
+      liveOutputSourcesRef.current.push(source);
+      const startAt = Math.max(context.currentTime + 0.02, liveOutputPlaybackTimeRef.current);
+      source.start(startAt);
+      liveOutputPlaybackTimeRef.current = startAt + buffer.duration;
+    } catch {
+      setLiveMessage("Voice response audio could not play, but the transcript is still available.");
+    }
+  }
+
+  function stopQueuedLiveAudio() {
+    liveOutputSourcesRef.current.forEach((source) => {
+      try {
+        source.stop();
+      } catch {
+        // Already stopped.
+      }
+    });
+    liveOutputSourcesRef.current = [];
+    const context = liveOutputAudioContextRef.current;
+    liveOutputPlaybackTimeRef.current = context ? context.currentTime : 0;
+  }
+
+  useEffect(() => () => {
+    if (liveSocketRef.current) {
+      liveSocketRef.current.close();
+      liveSocketRef.current = null;
+    }
+    stopMicrophoneStream();
+    stopQueuedLiveAudio();
+    if (liveOutputAudioContextRef.current) {
+      void liveOutputAudioContextRef.current.close();
+      liveOutputAudioContextRef.current = null;
+    }
+  }, []);
 
   function sendLiveText(text: string) {
     const socket = liveSocketRef.current;
@@ -399,6 +681,24 @@ export function SmallBusinessAnsweringTryClient({
     const id = nextLocalId("setup_live");
     liveResponseTurnIdRef.current = id;
     setTranscript((current) => [...current, { id, speaker: "setup", text }]);
+  }
+
+  function appendLiveCallerTurn(fragment: string) {
+    const text = fragment.trim();
+    if (!text) return;
+    const activeTurnId = liveInputTurnIdRef.current;
+    if (activeTurnId) {
+      setTranscript((current) =>
+        current.map((turn) =>
+          turn.id === activeTurnId ? { ...turn, text: joinTranscriptFragments(turn.text, text) } : turn,
+        ),
+      );
+      return;
+    }
+
+    const id = nextLocalId("caller_live");
+    liveInputTurnIdRef.current = id;
+    setTranscript((current) => [...current, { id, speaker: "caller", text }]);
   }
 
   function joinTranscriptFragments(current: string, fragment: string) {
@@ -554,6 +854,36 @@ export function SmallBusinessAnsweringTryClient({
     router.push("/dashboard/calls");
   }
 
+  const micStateLabel =
+    micState === "active"
+      ? "Microphone on"
+      : micState === "muted"
+        ? "Muted"
+        : micState === "requesting"
+          ? "Requesting microphone"
+          : micState === "blocked"
+            ? "Microphone blocked"
+            : micState === "error"
+              ? "Microphone unavailable"
+              : "Microphone off";
+  const voiceStateLabel =
+    liveState === "ready"
+      ? "Voice connected"
+      : liveState === "connected"
+        ? "Preparing voice"
+        : liveState === "starting"
+          ? "Connecting"
+          : liveState === "error"
+            ? "Voice issue"
+            : liveState === "closed"
+              ? "Call closed"
+              : "Ready";
+  const progressItems = [
+    { label: "Setup built", done: true },
+    { label: "Voice test", done: callEnded || callActive },
+    { label: "Save", done: false },
+  ];
+
   if (phase === "building") {
     return <BuildingScreen business={businessInput} activeStep={buildStep} importState={importState} />;
   }
@@ -584,156 +914,183 @@ export function SmallBusinessAnsweringTryClient({
   }
 
   return (
-    <div className="min-h-screen bg-[#f6f7fb]">
+    <div className="min-h-[100dvh] bg-[#FAFBFC] text-[#0F1115]">
       <TopBar businessName={businessName} />
-      <main className="mx-auto max-w-[1460px] px-4 py-6 sm:px-6 lg:px-8">
-        <div className="mb-5 flex flex-wrap items-start justify-between gap-4">
-          <div>
-            <div className="flex items-center gap-2">
-              <Badge tone="purple">Test call</Badge>
-              <Badge tone="neutral">Nothing is live yet</Badge>
-              <Badge tone={liveState === "ready" ? "success" : liveState === "error" ? "warning" : "neutral"}>Voice preview {formatLabel(liveState)}</Badge>
-              {importMessage ? <Badge tone={importState === "fallback" ? "warning" : "success"}>{importMessage}</Badge> : null}
+      <main className="mx-auto max-w-[1440px] px-4 py-5 sm:px-6 lg:px-8">
+        <section className="rounded-[8px] border border-[#D6DAE1] bg-white px-5 py-5 shadow-[0_18px_60px_rgba(15,17,21,.05)] sm:px-6">
+          <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
+            <div className="max-w-2xl">
+              <p className="text-sm font-semibold text-[#045BFF]">Voice test</p>
+              <h1 className="mt-2 text-[clamp(2rem,4vw,4rem)] font-semibold leading-[1.02] tracking-[-0.04em] text-[#0F1115]">
+                Test the answering setup out loud.
+              </h1>
+              <p className="mt-3 max-w-xl text-base leading-7 text-[#5B6472]">
+                Speak as a caller, hear the answering voice respond, and fix the setup before anything goes live.
+              </p>
             </div>
-            <h1 className="mt-3 text-3xl font-bold tracking-[-0.035em] text-slate-950">Your answering setup is ready</h1>
-            <p className="mt-1 text-sm leading-6 text-slate-500">Try anything a caller might ask. Update the setup beside the call without leaving the page.</p>
+            <div className="flex flex-wrap items-center gap-2">
+              {progressItems.map((item, index) => (
+                <span
+                  key={item.label}
+                  className={cn(
+                    "inline-flex h-9 items-center gap-2 rounded-[6px] border px-3 text-sm font-semibold",
+                    item.done ? "border-[#BFD5FF] bg-[#ECF3FF] text-[#045BFF]" : "border-[#D6DAE1] bg-[#FAFBFC] text-[#5B6472]",
+                  )}
+                >
+                  <span className={cn("flex size-5 items-center justify-center rounded-full text-[11px]", item.done ? "bg-[#045BFF] text-white" : "bg-[#E7EAF0] text-[#5B6472]")}>
+                    {item.done ? <Check className="size-3" /> : index + 1}
+                  </span>
+                  {item.label}
+                </span>
+              ))}
+            </div>
           </div>
-          {callEnded ? (
-            <Button onClick={() => setPhase(readiness.liveReady ? "save" : "review")}>Continue <ArrowRight className="size-4" /></Button>
-          ) : null}
-        </div>
-
-        <div className="grid gap-5 xl:grid-cols-[minmax(0,1.15fr)_430px]">
-          <Card className="overflow-hidden">
-            <div className="border-b border-slate-100 bg-white px-5 py-4">
-              <div className="flex items-center justify-between gap-4">
-                <div className="flex items-center gap-3">
-                  <div className={cn("flex size-10 items-center justify-center rounded-xl", callActive ? "bg-emerald-50 text-emerald-600" : "bg-violet-50 text-violet-600")}>
-                    <PhoneCall className="size-5" />
-                  </div>
-                  <div>
-                    <p className="font-semibold text-slate-900">Test call</p>
-                    <p className="mt-0.5 text-xs text-slate-500">{callActive ? liveMessage : callEnded ? "Test call ended" : "Ready when you are"}</p>
-                  </div>
-                </div>
-                <Badge tone={callActive ? "success" : "neutral"}>{callActive ? "Active" : "Test"}</Badge>
-              </div>
+          {importMessage ? (
+            <div className={cn("mt-5 rounded-[6px] border px-4 py-3 text-sm", importState === "fallback" ? "border-[#F2C76A] bg-[#FFF8E6] text-[#6F4A00]" : "border-[#BFE5D3] bg-[#F0FBF6] text-[#17633F]")}>
+              {importMessage}
             </div>
+          ) : null}
+        </section>
 
-            <div className="soft-grid grid min-h-[650px] lg:grid-cols-[320px_minmax(0,1fr)]">
-              <div className="flex flex-col items-center justify-center border-b border-slate-200/70 p-6 lg:border-b-0 lg:border-r">
-                <div className="relative w-full max-w-[270px] rounded-[44px] border-[8px] border-[#17152a] bg-[#17152a] p-2 shadow-[0_32px_70px_rgba(23,21,42,.25)]">
-                  <div className="min-h-[480px] rounded-[32px] bg-gradient-to-b from-[#f7f4ff] to-white p-5 text-center">
-                    <div className="mx-auto h-1.5 w-16 rounded-full bg-slate-300" />
-                    <div className={cn("phone-ring mx-auto mt-14 flex size-24 items-center justify-center rounded-full", callActive ? "bg-emerald-500 text-white" : "bg-violet-600 text-white")}>
-                      {callActive ? <Mic className="size-9" /> : <Sparkles className="size-9" />}
+        <div className="mt-5 grid gap-5 xl:grid-cols-[minmax(0,1fr)_390px]">
+          <section className="grid gap-5 lg:grid-cols-[360px_minmax(0,1fr)]">
+            <Card className="overflow-hidden rounded-[8px] border-[#D6DAE1] bg-[#0F1115] text-white shadow-[0_18px_60px_rgba(15,17,21,.10)]">
+              <div className="p-5">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-semibold text-white/60">{voiceStateLabel}</p>
+                    <h2 className="mt-1 text-2xl font-semibold tracking-[-0.03em]">Browser voice call</h2>
+                  </div>
+                  <span className={cn("flex size-11 items-center justify-center rounded-[8px]", callActive ? "bg-[#045BFF]" : "bg-white/10")}>
+                    {callActive ? <AudioLines className="size-5" /> : <PhoneCall className="size-5" />}
+                  </span>
+                </div>
+
+                <div className="mt-8 rounded-[8px] border border-white/10 bg-white/[0.06] p-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-semibold">{callActive ? "Listening now" : callEnded ? "Test complete" : "Ready to start"}</p>
+                      <p className="mt-1 text-sm leading-6 text-white/60">{liveMessage}</p>
                     </div>
-                    <p className="mt-8 text-lg font-bold text-slate-950">Small Business Answering</p>
-                    <p className="mt-1 text-sm text-slate-500">{callActive ? "Listening" : callEnded ? "Call complete" : "Ready to answer"}</p>
-                    <div className="mt-8 flex justify-center gap-4">
-                      <button type="button" onClick={() => setMuted((value) => !value)} className="flex size-12 items-center justify-center rounded-full bg-slate-100 text-slate-600">
-                        {muted ? <MicOff className="size-5" /> : <Mic className="size-5" />}
-                      </button>
-                      {!callActive ? (
-                        <button type="button" onClick={startCall} className="flex size-14 items-center justify-center rounded-full bg-emerald-500 text-white shadow-lg shadow-emerald-500/20"><Phone className="size-6" /></button>
-                      ) : (
-                        <button type="button" onClick={endCall} className="flex size-14 items-center justify-center rounded-full bg-red-500 text-white shadow-lg shadow-red-500/20"><PhoneOff className="size-6" /></button>
-                      )}
-                    </div>
-                    <div className="mt-5 rounded-2xl border border-slate-200 bg-white/75 px-3 py-2 text-left">
-                      <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-slate-400">Voice preview</p>
-                      <p className="mt-1 text-xs leading-5 text-slate-600">{liveMessage}</p>
-                      {liveRuntimeIdentity ? <p className="mt-1 text-[11px] font-semibold text-emerald-600">Secure voice preview active</p> : null}
-                      {liveAudioChunks ? <p className="mt-1 text-[11px] font-semibold text-emerald-600">Voice response received</p> : null}
-                    </div>
-                    {!callActive && !callEnded ? <p className="mt-5 text-xs font-semibold text-slate-400">Start the call, then use a phrase on the right.</p> : null}
+                    <span className={cn("size-3 rounded-full", liveState === "ready" ? "bg-[#25C26E]" : liveState === "error" ? "bg-[#FFB020]" : callActive ? "bg-[#045BFF]" : "bg-white/25")} />
+                  </div>
+                  <div className="mt-4 h-2 overflow-hidden rounded-full bg-white/10">
+                    <div className="h-full rounded-full bg-[#045BFF] transition-all duration-150" style={{ width: `${Math.max(8, micLevel * 100)}%` }} />
+                  </div>
+                  <div className="mt-3 flex flex-wrap items-center gap-2 text-xs font-semibold text-white/55">
+                    <span>{micStateLabel}</span>
+                    {liveRuntimeIdentity ? <span>Secure voice session</span> : null}
+                    {liveAudioChunks ? <span>Voice reply received</span> : null}
                   </div>
                 </div>
-              </div>
 
-              <div className="flex min-h-0 flex-col bg-white/70">
-                <div className="border-b border-slate-200/70 px-5 py-4">
-                  <p className="text-sm font-semibold text-slate-900">Transcript</p>
-                  <p className="mt-1 text-xs text-slate-500">This test uses the same approved setup that powers the dashboard.</p>
-                </div>
-                <div className="flex-1 space-y-4 overflow-auto p-5">
-                  {transcript.length ? transcript.map((turn) => (
-                    <div key={turn.id} className={cn("flex", turn.speaker === "caller" ? "justify-end" : "justify-start")}>
-                      <div className={cn("max-w-[85%] rounded-2xl px-4 py-3 text-sm leading-6", turn.speaker === "caller" ? "rounded-br-md bg-[#17152a] text-white" : "rounded-bl-md border border-slate-200 bg-white text-slate-700 shadow-sm")}>
-                        <p className="mb-1 text-[10px] font-bold uppercase tracking-[0.12em] opacity-55">{turn.speaker === "caller" ? "Caller" : "Answering setup"}</p>
-                        {turn.text}
-                      </div>
-                    </div>
-                  )) : (
-                    <div className="flex h-full min-h-64 items-center justify-center text-center">
-                      <div>
-                        <div className="mx-auto flex size-12 items-center justify-center rounded-2xl bg-violet-50 text-violet-600"><Play className="size-5" /></div>
-                        <p className="mt-4 font-semibold text-slate-800">Start the test call</p>
-                        <p className="mt-1 max-w-sm text-sm leading-6 text-slate-500">The transcript, captured details, requests, alerts, and prepared actions will appear here.</p>
-                      </div>
-                    </div>
+                <div className="mt-5 grid grid-cols-[56px_1fr] gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setMuted((value) => !value)}
+                    disabled={!callActive}
+                    className="flex h-14 items-center justify-center rounded-[8px] border border-white/10 bg-white/[0.08] text-white transition hover:bg-white/[0.12] disabled:cursor-not-allowed disabled:opacity-45"
+                    aria-label={muted ? "Unmute microphone" : "Mute microphone"}
+                  >
+                    {muted ? <MicOff className="size-5" /> : <Mic className="size-5" />}
+                  </button>
+                  {!callActive ? (
+                    <Button onClick={() => void startCall()} className="h-14 rounded-[8px] bg-[#045BFF] text-base font-semibold text-white hover:bg-[#034AD1]">
+                      <Phone className="size-4" /> {callEnded ? "Run another voice test" : "Start voice test"}
+                    </Button>
+                  ) : (
+                    <Button onClick={endCall} className="h-14 rounded-[8px] bg-white text-base font-semibold text-[#0F1115] hover:bg-[#F3F5F8]">
+                      <PhoneOff className="size-4" /> End test
+                    </Button>
                   )}
                 </div>
-              </div>
-            </div>
-          </Card>
 
-          <aside className="space-y-4">
-            <Card className="p-5">
-              <div className="flex items-center gap-2">
-                <Sparkles className="size-4 text-violet-600" />
-                <h2 className="font-semibold text-slate-900">Try saying</h2>
+                {callEnded ? (
+                  <Button onClick={() => setPhase(readiness.liveReady ? "save" : "review")} className="mt-4 h-12 w-full rounded-[8px] bg-[#045BFF] font-semibold text-white hover:bg-[#034AD1]">
+                    Continue <ArrowRight className="size-4" />
+                  </Button>
+                ) : null}
               </div>
-              <p className="mt-1 text-sm text-slate-500">These prompts are generated from the current answering setup.</p>
+            </Card>
+
+            <Card className="flex min-h-[620px] flex-col overflow-hidden rounded-[8px] border-[#D6DAE1] bg-white">
+              <div className="border-b border-[#D6DAE1] px-5 py-4">
+                <p className="text-base font-semibold text-[#0F1115]">Live transcript</p>
+                <p className="mt-1 text-sm text-[#667085]">Spoken caller turns and answering responses appear here.</p>
+              </div>
+              <div className="flex-1 space-y-4 overflow-auto bg-[#FAFBFC] p-5">
+                {transcript.length ? transcript.map((turn) => (
+                  <div key={turn.id} className={cn("flex", turn.speaker === "caller" ? "justify-end" : "justify-start")}>
+                    <div className={cn("max-w-[86%] rounded-[8px] px-4 py-3 text-sm leading-6 shadow-sm", turn.speaker === "caller" ? "bg-[#0F1115] text-white" : "border border-[#D6DAE1] bg-white text-[#273142]")}>
+                      <p className={cn("mb-1 text-xs font-semibold", turn.speaker === "caller" ? "text-white/55" : "text-[#667085]")}>{turn.speaker === "caller" ? "Caller" : "Answering setup"}</p>
+                      {turn.text}
+                    </div>
+                  </div>
+                )) : (
+                  <div className="flex h-full min-h-72 items-center justify-center text-center">
+                    <div>
+                      <div className="mx-auto flex size-12 items-center justify-center rounded-[8px] border border-[#D6DAE1] bg-white text-[#045BFF]"><Play className="size-5" /></div>
+                      <p className="mt-4 font-semibold text-[#0F1115]">Start the voice test</p>
+                      <p className="mt-1 max-w-sm text-sm leading-6 text-[#667085]">Speak through the browser microphone or use a suggested phrase.</p>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </Card>
+          </section>
+
+          <aside className="space-y-5">
+            <Card className="rounded-[8px] border-[#D6DAE1] bg-white p-5">
+              <div className="flex items-center gap-2">
+                <Mic className="size-4 text-[#045BFF]" />
+                <h2 className="font-semibold text-[#0F1115]">Suggested caller phrases</h2>
+              </div>
               <div className="mt-4 space-y-2.5">
-                {suggestions.map((prompt) => (
+                {suggestions.slice(0, 5).map((prompt) => (
                   <button
                     key={prompt.id}
                     type="button"
                     onClick={() => runPrompt(prompt)}
-                    className="group flex w-full items-start gap-3 rounded-xl border border-slate-200 p-3 text-left transition hover:border-violet-300 hover:bg-violet-50/50"
+                    className="group w-full rounded-[8px] border border-[#D6DAE1] bg-[#FAFBFC] p-3 text-left transition hover:border-[#9DBEFF] hover:bg-[#ECF3FF]"
                   >
-                    <Mic className="mt-0.5 size-4 shrink-0 text-violet-500" />
-                    <div>
-                      <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-slate-400">{formatLabel(prompt.category)}</p>
-                      <p className="mt-1 text-sm font-medium leading-5 text-slate-700">{prompt.prompt}</p>
-                    </div>
+                    <p className="text-xs font-semibold text-[#667085]">{formatLabel(prompt.category)}</p>
+                    <p className="mt-1 text-sm font-medium leading-5 text-[#273142]">{prompt.prompt}</p>
                   </button>
                 ))}
               </div>
             </Card>
 
-            <Card className="p-5">
+            <Card className="rounded-[8px] border-[#D6DAE1] bg-white p-5">
               <div className="flex items-center gap-2">
-                <WandSparkles className="size-4 text-violet-600" />
-                <h2 className="font-semibold text-slate-900">Update setup</h2>
+                <WandSparkles className="size-4 text-[#045BFF]" />
+                <h2 className="font-semibold text-[#0F1115]">Update the setup</h2>
               </div>
-              <p className="mt-1 text-sm leading-6 text-slate-500">Changes are checked before they update the saved answering setup.</p>
+              <p className="mt-1 text-sm leading-6 text-[#667085]">Tell the assistant what changed. It updates the same setup used by the test and dashboard.</p>
 
               {unknownQuestion ? (
-                <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-3">
-                  <p className="text-xs font-bold uppercase tracking-[0.12em] text-amber-700">Add this approved answer</p>
-                  <p className="mt-1 text-sm font-semibold text-amber-950">{unknownQuestion}</p>
+                <div className="mt-4 rounded-[8px] border border-[#F2C76A] bg-[#FFF8E6] p-3">
+                  <p className="text-xs font-semibold text-[#6F4A00]">Missing approved answer</p>
+                  <p className="mt-1 text-sm font-semibold text-[#2F2200]">{unknownQuestion}</p>
                 </div>
               ) : null}
 
               <div className="mt-4 flex gap-2">
-                <Textarea value={updateText} onChange={(event) => setUpdateText(event.target.value)} placeholder="Add or change anything about the business..." className="min-h-20" />
-                <Button onClick={() => void updateSetup()} disabled={!updateText.trim() || updating} className="h-auto w-12 shrink-0 px-0">
+                <Textarea value={updateText} onChange={(event) => setUpdateText(event.target.value)} placeholder="Example: answer warranty questions like this..." className="min-h-24 rounded-[8px] border-[#D6DAE1]" />
+                <Button onClick={() => void updateSetup()} disabled={!updateText.trim() || updating} className="h-auto w-12 shrink-0 rounded-[8px] bg-[#045BFF] px-0 text-white hover:bg-[#034AD1]">
                   {updating ? <LoaderCircle className="size-4 animate-spin" /> : <Send className="size-4" />}
                 </Button>
               </div>
-              {updateStatus ? <div className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm leading-6 text-emerald-800">{updateStatus}</div> : null}
+              {updateStatus ? <div className="mt-3 rounded-[8px] border border-[#BFE5D3] bg-[#F0FBF6] p-3 text-sm leading-6 text-[#17633F]">{updateStatus}</div> : null}
             </Card>
 
-            <Card className="p-5">
+            <Card className="rounded-[8px] border-[#D6DAE1] bg-white p-5">
               <div className="flex items-center justify-between gap-3">
-                <div className="flex items-center gap-2"><CheckCircle2 className="size-4 text-violet-600" /><h2 className="font-semibold text-slate-900">During this call</h2></div>
-                <Badge tone="neutral">{outcomes.length}</Badge>
+                <div className="flex items-center gap-2"><CheckCircle2 className="size-4 text-[#045BFF]" /><h2 className="font-semibold text-[#0F1115]">Call outputs</h2></div>
+                <span className="rounded-[6px] border border-[#D6DAE1] bg-[#FAFBFC] px-2 py-1 text-xs font-semibold text-[#667085]">{outcomes.length}</span>
               </div>
               <div className="mt-4 space-y-2.5">
                 {outcomes.length ? outcomes.map((outcome) => <Outcome key={outcome.id} outcome={outcome} />) : (
-                  <div className="rounded-xl border border-dashed border-slate-200 p-5 text-center text-sm leading-6 text-slate-400">Visible outputs will appear as the setup captures or prepares them.</div>
+                  <div className="rounded-[8px] border border-dashed border-[#D6DAE1] p-5 text-center text-sm leading-6 text-[#667085]">Requests, messages, alerts, and details will appear here during the test.</div>
                 )}
               </div>
             </Card>
@@ -746,13 +1103,12 @@ export function SmallBusinessAnsweringTryClient({
 
 function TopBar({ businessName }: { businessName: string }) {
   return (
-    <header className="border-b border-slate-200 bg-white">
-      <div className="mx-auto flex max-w-[1460px] items-center justify-between gap-4 px-4 py-3 sm:px-6 lg:px-8">
+    <header className="border-b border-[#D6DAE1] bg-white">
+      <div className="mx-auto flex max-w-[1440px] items-center justify-between gap-4 px-4 py-3 sm:px-6 lg:px-8">
         <div className="flex items-center gap-2.5">
-          <span className="flex size-9 items-center justify-center rounded-xl bg-[#17152a] text-white"><Sparkles className="size-4" /></span>
-          <span className="font-bold tracking-tight text-slate-950">Small Business Answering</span>
+          <span className="font-semibold tracking-tight text-[#0F1115]">Small Business Answering</span>
         </div>
-        <div className="flex items-center gap-2 rounded-full bg-slate-100 px-3 py-1.5 text-xs font-semibold text-slate-600"><Building2 className="size-3.5" /> {businessName}</div>
+        <div className="flex min-w-0 items-center gap-2 rounded-[6px] border border-[#D6DAE1] bg-[#FAFBFC] px-3 py-1.5 text-xs font-semibold text-[#5B6472]"><Building2 className="size-3.5" /> <span className="truncate">{businessName}</span></div>
       </div>
     </header>
   );
@@ -760,12 +1116,12 @@ function TopBar({ businessName }: { businessName: string }) {
 
 function BuildingScreen({ business, activeStep, importState }: { business: string; activeStep: number; importState: ImportState }) {
   return (
-    <div className="flex min-h-screen items-center justify-center bg-[#f6f7fb] px-5 py-12">
-      <Card className="w-full max-w-2xl overflow-hidden">
-        <div className="bg-[#17152a] px-8 py-10 text-white">
-          <div className="flex size-12 items-center justify-center rounded-2xl bg-white/10"><Sparkles className="size-5" /></div>
-          <h1 className="mt-6 text-3xl font-bold tracking-[-0.035em]">Building your answering setup</h1>
-          <p className="mt-2 text-sm leading-6 text-white/65">Reading {business} and preparing one answering setup for testing and dashboard review.</p>
+    <div className="flex min-h-[100dvh] items-center justify-center bg-[#FAFBFC] px-5 py-12 text-[#0F1115]">
+      <Card className="w-full max-w-3xl overflow-hidden rounded-[8px] border-[#D6DAE1] bg-white shadow-[0_24px_80px_rgba(15,17,21,.08)]">
+        <div className="border-b border-[#D6DAE1] bg-[#0F1115] px-7 py-8 text-white sm:px-8">
+          <p className="text-sm font-semibold text-white/60">Small Business Answering</p>
+          <h1 className="mt-3 text-3xl font-semibold tracking-[-0.035em]">Building your answering setup</h1>
+          <p className="mt-2 max-w-xl text-sm leading-6 text-white/65">Reading {business} and preparing one setup for voice testing, owner review, and the dashboard.</p>
         </div>
         <div className="p-7 sm:p-8">
           <div className="space-y-4">
@@ -774,16 +1130,16 @@ function BuildingScreen({ business, activeStep, importState }: { business: strin
               const active = index === activeStep;
               return (
                 <div key={step} className="flex items-center gap-3">
-                  <span className={cn("flex size-8 items-center justify-center rounded-xl border", done ? "border-emerald-200 bg-emerald-50 text-emerald-600" : active ? "border-violet-200 bg-violet-50 text-violet-600" : "border-slate-200 bg-white text-slate-300")}>
+                  <span className={cn("flex size-8 items-center justify-center rounded-[6px] border", done ? "border-[#BFE5D3] bg-[#F0FBF6] text-[#17633F]" : active ? "border-[#BFD5FF] bg-[#ECF3FF] text-[#045BFF]" : "border-[#D6DAE1] bg-white text-[#9AA3B2]")}>
                     {done ? <Check className="size-4" /> : active ? <LoaderCircle className="size-4 animate-spin" /> : <Circle className="size-3" />}
                   </span>
-                  <span className={cn("text-sm font-semibold", done || active ? "text-slate-800" : "text-slate-400")}>{step}</span>
+                  <span className={cn("text-sm font-semibold", done || active ? "text-[#273142]" : "text-[#9AA3B2]")}>{step}</span>
                 </div>
               );
             })}
           </div>
-          <div className="mt-8 h-2 overflow-hidden rounded-full bg-slate-100"><div className="h-full rounded-full bg-violet-600 transition-all duration-500" style={{ width: `${((activeStep + 1) / buildSteps.length) * 100}%` }} /></div>
-          <p className="mt-4 text-xs font-semibold text-slate-400">{importState === "reading" ? "Reading website facts into the answering setup." : "No calls go live during setup."}</p>
+          <div className="mt-8 h-2 overflow-hidden rounded-full bg-[#E7EAF0]"><div className="h-full rounded-full bg-[#045BFF] transition-all duration-500" style={{ width: `${((activeStep + 1) / buildSteps.length) * 100}%` }} /></div>
+          <p className="mt-4 text-xs font-semibold text-[#667085]">{importState === "reading" ? "Reading website facts into the answering setup." : "No calls go live during setup."}</p>
         </div>
       </Card>
     </div>
@@ -802,13 +1158,13 @@ function Outcome({ outcome }: { outcome: OutcomeCard }) {
   };
   const Icon = icons[outcome.type];
   return (
-    <div className="rounded-xl border border-slate-200 p-3">
+    <div className="rounded-[8px] border border-[#D6DAE1] p-3">
       <div className="flex items-start gap-3">
-        <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-violet-50 text-violet-600"><Icon className="size-4" /></span>
+        <span className="flex size-8 shrink-0 items-center justify-center rounded-[6px] bg-[#ECF3FF] text-[#045BFF]"><Icon className="size-4" /></span>
         <div className="min-w-0">
-          <p className="text-sm font-semibold text-slate-900">{outcome.title}</p>
-          <p className="mt-1 text-xs leading-5 text-slate-500">{outcome.detail}</p>
-          <p className="mt-2 text-[10px] font-bold uppercase tracking-[0.12em] text-emerald-600">{outcome.status}</p>
+          <p className="text-sm font-semibold text-[#0F1115]">{outcome.title}</p>
+          <p className="mt-1 text-xs leading-5 text-[#667085]">{outcome.detail}</p>
+          <p className="mt-2 text-xs font-semibold text-[#17633F]">{outcome.status}</p>
         </div>
       </div>
     </div>
@@ -833,35 +1189,35 @@ function ReviewScreen({
   onContinue: () => void;
 }) {
   return (
-    <div className="min-h-screen bg-[#f6f7fb]">
+    <div className="min-h-[100dvh] bg-[#FAFBFC] text-[#0F1115]">
       <TopBar businessName={setup.business.name} />
       <main className="mx-auto max-w-3xl px-5 py-12">
-        <Badge tone="warning">{readiness.allReviewItems.length} activation item{readiness.allReviewItems.length === 1 ? "" : "s"}</Badge>
-        <h1 className="mt-4 text-3xl font-bold tracking-[-0.035em] text-slate-950">Before real calls are answered</h1>
-        <p className="mt-2 text-sm leading-6 text-slate-500">Only launch requirements appear here. These items come from the saved answering setup.</p>
+        <p className="text-sm font-semibold text-[#045BFF]">{readiness.allReviewItems.length} activation item{readiness.allReviewItems.length === 1 ? "" : "s"}</p>
+        <h1 className="mt-3 text-4xl font-semibold tracking-[-0.04em] text-[#0F1115]">Before real calls are answered</h1>
+        <p className="mt-3 text-sm leading-6 text-[#667085]">Only launch requirements appear here. These items come from the saved answering setup.</p>
 
         <div className="mt-7 space-y-4">
-          <Card className="p-5">
+          <Card className="rounded-[8px] border-[#D6DAE1] bg-white p-5">
             <div className="flex items-start gap-3">
-              <span className="flex size-10 items-center justify-center rounded-xl bg-violet-50 text-violet-600"><Phone className="size-5" /></span>
+              <span className="flex size-10 items-center justify-center rounded-[8px] bg-[#ECF3FF] text-[#045BFF]"><Phone className="size-5" /></span>
               <div className="flex-1">
-                <h2 className="font-semibold text-slate-900">Where should messages and important alerts go?</h2>
-                <p className="mt-1 text-sm leading-6 text-slate-500">Add the owner or on-call number that should receive alerts after activation.</p>
+                <h2 className="font-semibold text-[#0F1115]">Where should messages and important alerts go?</h2>
+                <p className="mt-1 text-sm leading-6 text-[#667085]">Add the owner or on-call number that should receive alerts after activation.</p>
                 <div className="mt-4 flex gap-2">
-                  <Input value={alertPhone} onChange={(event) => setAlertPhone(event.target.value)} placeholder="Phone number" />
-                  <Button variant="secondary" onClick={onApplyPhone} disabled={!alertPhone.trim()}>Use number</Button>
+                  <Input value={alertPhone} onChange={(event) => setAlertPhone(event.target.value)} placeholder="Phone number" className="rounded-[8px] border-[#D6DAE1]" />
+                  <Button variant="secondary" onClick={onApplyPhone} disabled={!alertPhone.trim()} className="rounded-[8px]">Use number</Button>
                 </div>
               </div>
             </div>
           </Card>
 
-          <Card className="p-5">
+          <Card className="rounded-[8px] border-[#D6DAE1] bg-white p-5">
             <div className="flex items-start gap-3">
-              <span className="flex size-10 items-center justify-center rounded-xl bg-violet-50 text-violet-600"><Clock3 className="size-5" /></span>
+              <span className="flex size-10 items-center justify-center rounded-[8px] bg-[#ECF3FF] text-[#045BFF]"><Clock3 className="size-5" /></span>
               <div className="flex-1">
-                <h2 className="font-semibold text-slate-900">After-hours handling</h2>
-                <p className="mt-1 text-sm leading-6 text-slate-500">{setup.hours.afterHours.callerWording}</p>
-                <Select className="mt-4" value={setup.hours.afterHours.mode} disabled>
+                <h2 className="font-semibold text-[#0F1115]">After-hours handling</h2>
+                <p className="mt-1 text-sm leading-6 text-[#667085]">{setup.hours.afterHours.callerWording}</p>
+                <Select className="mt-4 rounded-[8px] border-[#D6DAE1]" value={setup.hours.afterHours.mode} disabled>
                   <option value="take_message">Take a message</option>
                   <option value="urgent_only">Urgent only</option>
                   <option value="send_booking_link">Send booking link</option>
@@ -873,8 +1229,8 @@ function ReviewScreen({
         </div>
 
         <div className="mt-7 flex items-center justify-between">
-          <Button variant="ghost" onClick={onBack}><ArrowLeft className="size-4" /> Back to test</Button>
-          <Button onClick={onContinue}>Save setup <ArrowRight className="size-4" /></Button>
+          <Button variant="ghost" onClick={onBack} className="rounded-[8px]"><ArrowLeft className="size-4" /> Back to test</Button>
+          <Button onClick={onContinue} className="rounded-[8px] bg-[#045BFF] text-white hover:bg-[#034AD1]">Save setup <ArrowRight className="size-4" /></Button>
         </div>
       </main>
     </div>
@@ -883,22 +1239,22 @@ function ReviewScreen({
 
 function SaveScreen({ email, setEmail, onBack, onContinue }: { email: string; setEmail: (value: string) => void; onBack: () => void; onContinue: () => void }) {
   return (
-    <div className="flex min-h-screen items-center justify-center bg-[#f6f7fb] px-5 py-12">
-      <Card className="w-full max-w-lg p-7 sm:p-8">
-        <div className="flex size-12 items-center justify-center rounded-2xl bg-violet-50 text-violet-600"><Save className="size-5" /></div>
-        <h1 className="mt-6 text-3xl font-bold tracking-[-0.035em] text-slate-950">Save your answering setup</h1>
-        <p className="mt-2 text-sm leading-6 text-slate-500">Keep this setup, owner updates, and test call so you can continue or activate it later.</p>
-        <button onClick={onContinue} className="mt-7 flex h-12 w-full items-center justify-center gap-3 rounded-xl border border-slate-200 bg-white text-sm font-semibold text-slate-800 shadow-sm transition hover:bg-slate-50">
+    <div className="flex min-h-[100dvh] items-center justify-center bg-[#FAFBFC] px-5 py-12 text-[#0F1115]">
+      <Card className="w-full max-w-lg rounded-[8px] border-[#D6DAE1] bg-white p-7 shadow-[0_24px_80px_rgba(15,17,21,.08)] sm:p-8">
+        <div className="flex size-12 items-center justify-center rounded-[8px] bg-[#ECF3FF] text-[#045BFF]"><Save className="size-5" /></div>
+        <h1 className="mt-6 text-3xl font-semibold tracking-[-0.035em] text-[#0F1115]">Save your answering setup</h1>
+        <p className="mt-2 text-sm leading-6 text-[#667085]">Keep this setup, owner updates, and test call so you can continue or activate it later.</p>
+        <button onClick={onContinue} className="mt-7 flex h-12 w-full items-center justify-center gap-3 rounded-[8px] border border-[#D6DAE1] bg-white text-sm font-semibold text-[#0F1115] shadow-sm transition hover:bg-[#FAFBFC]">
           <span className="flex size-6 items-center justify-center rounded-full bg-gradient-to-br from-blue-500 via-red-500 to-yellow-400 text-xs font-bold text-white">G</span>
           Continue with Google
         </button>
-        <div className="my-5 flex items-center gap-3 text-xs font-semibold text-slate-400"><span className="h-px flex-1 bg-slate-200" />or<span className="h-px flex-1 bg-slate-200" /></div>
+        <div className="my-5 flex items-center gap-3 text-xs font-semibold text-[#9AA3B2]"><span className="h-px flex-1 bg-[#D6DAE1]" />or<span className="h-px flex-1 bg-[#D6DAE1]" /></div>
         <Field label="Work email">
-          <Input type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="you@company.com" />
+          <Input type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="you@company.com" className="rounded-[8px] border-[#D6DAE1]" />
         </Field>
-        <Button className="mt-3 w-full" onClick={onContinue} disabled={!email.trim()}><Mail className="size-4" /> Email me a secure link</Button>
-        <p className="mt-4 text-center text-xs leading-5 text-slate-400">Creates a free Small Business Answering account. No card required.</p>
-        <button onClick={onBack} className="mt-5 w-full text-center text-sm font-semibold text-slate-500 hover:text-slate-800">Back</button>
+        <Button className="mt-3 w-full rounded-[8px] bg-[#045BFF] text-white hover:bg-[#034AD1]" onClick={onContinue} disabled={!email.trim()}><Mail className="size-4" /> Email me a secure link</Button>
+        <p className="mt-4 text-center text-xs leading-5 text-[#667085]">Creates a free Small Business Answering account. No card required.</p>
+        <button onClick={onBack} className="mt-5 w-full text-center text-sm font-semibold text-[#667085] hover:text-[#0F1115]">Back</button>
       </Card>
     </div>
   );
