@@ -104,7 +104,7 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
   };
 
   return (
-    <div className="min-h-[100dvh] bg-[#FAFBFC] text-[#0F1115] md:grid md:grid-cols-[76px_1fr] xl:grid-cols-[252px_1fr]">
+    <div className="min-h-[100dvh] w-full max-w-[100dvw] overflow-x-hidden bg-[#FAFBFC] text-[#0F1115] md:grid md:grid-cols-[76px_1fr] xl:grid-cols-[252px_1fr]">
       <aside className="sticky top-0 hidden h-[100dvh] border-r border-[#D6DAE1] bg-[#FAFBFC] md:flex md:flex-col md:px-2 md:py-4 xl:px-4 xl:py-6">
         <Link href="/" className="flex items-center justify-center gap-3 px-1 pb-5 xl:justify-start xl:pb-6">
           <span className="flex size-10 items-center justify-center rounded-[8px] bg-[#1565FF] text-sm font-bold text-white shadow-[0_10px_22px_rgba(21,101,255,.22)]">SBA</span>
@@ -147,8 +147,7 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
               aria-label="Open dashboard navigation"
               aria-expanded={mobileNavOpen}
               onClick={() => setMobileNavOpen(true)}
-              style={{ left: "calc(100dvw - 3.5rem)" }}
-              className="fixed top-3 z-40 inline-flex size-10 items-center justify-center rounded-[8px] border border-[#D6DAE1] bg-white text-[#111827] shadow-[0_6px_14px_rgba(15,17,21,.05)] transition active:translate-y-px"
+              className="fixed right-4 top-3 z-40 inline-flex size-10 items-center justify-center rounded-[8px] border border-[#D6DAE1] bg-white text-[#111827] shadow-[0_6px_14px_rgba(15,17,21,.05)] transition active:translate-y-px"
             >
               <Menu className="size-5" />
             </button>
