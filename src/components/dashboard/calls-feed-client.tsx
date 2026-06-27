@@ -7,12 +7,10 @@ import {
   Bell,
   CalendarCheck2,
   Clock3,
-  MessageSquareText,
+  Headphones,
   PhoneCall,
   Play,
-  TestTube2,
 } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { loadSbaWorkspace, type StoredTestCall } from "@/lib/sba-client-storage";
 
@@ -34,64 +32,77 @@ export function CallsFeedClient() {
     };
   }, []);
 
-  const requestCount = useMemo(() => testCall?.outcomes.filter((item) => item.type === "request" || item.type === "urgent").length ?? 0, [testCall]);
-  const messageCount = useMemo(() => testCall?.outcomes.filter((item) => item.type === "message" || item.type === "followup").length ?? 0, [testCall]);
+  const requestCount = useMemo(
+    () => testCall?.outcomes.filter((item) => item.type === "request" || item.type === "urgent").length ?? 0,
+    [testCall],
+  );
   const alertPrepared = Boolean(testCall?.outcomes.some((item) => item.type === "alert"));
 
   return (
-    <main className="mx-auto max-w-[1280px] px-4 py-5 sm:px-6 lg:px-8">
+    <main className="mx-auto max-w-[1180px] px-4 py-6 sm:px-6 lg:px-8">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <div className="flex flex-wrap items-center gap-2">
-            <h1 className="text-2xl font-bold text-slate-950 sm:text-3xl">Calls</h1>
-            <Badge tone="neutral">{testCall ? "1 call" : "No calls"}</Badge>
-          </div>
-          <p className="mt-1 text-sm text-slate-500">Review caller conversations and the actions created from them.</p>
+          <h1 className="text-2xl font-bold text-slate-950 sm:text-3xl">Calls</h1>
+          <p className="mt-1 max-w-2xl text-sm leading-6 text-slate-500">
+            Review caller conversations and the follow-up work created from them.
+          </p>
         </div>
         <Link href="/dashboard/test-center" className="inline-flex h-11 items-center gap-2 rounded-lg bg-[#17152a] px-4 text-sm font-semibold text-white hover:bg-[#292541]">
           <Play className="size-4" /> Run test call
         </Link>
       </div>
 
-      <div className="mt-5 grid gap-3 md:grid-cols-4">
-        <Stat icon={<PhoneCall className="size-4" />} label="Calls" value={testCall ? "1" : "0"} />
-        <Stat icon={<CalendarCheck2 className="size-4" />} label="Requests" value={String(requestCount)} />
-        <Stat icon={<MessageSquareText className="size-4" />} label="Messages" value={String(messageCount)} />
-        <Stat icon={<Bell className="size-4" />} label="Owner alert" value={alertPrepared ? "Prepared" : "None"} />
-      </div>
-
       {testCall ? (
-        <Card className="mt-5 overflow-hidden">
-          <div className="grid gap-4 p-5 lg:grid-cols-[280px_minmax(0,1fr)_220px_auto] lg:items-center">
-            <div className="flex items-start gap-3">
-              <span className="flex size-10 shrink-0 items-center justify-center rounded-md bg-slate-950 text-white"><TestTube2 className="size-5" /></span>
-              <div>
-                <div className="flex flex-wrap items-center gap-2">
-                  <p className="font-semibold text-slate-900">Test call</p>
-                  <Badge tone="purple">Test</Badge>
-                  <Badge tone="success">Completed</Badge>
+        <Card className="mt-6 overflow-hidden">
+          <div className="grid gap-6 p-5 lg:grid-cols-[minmax(0,1fr)_260px]">
+            <section>
+              <div className="flex flex-wrap items-center gap-3">
+                <span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-slate-950 text-white">
+                  <PhoneCall className="size-5" />
+                </span>
+                <div>
+                  <h2 className="text-lg font-semibold text-slate-950">Latest call</h2>
+                  <p className="mt-1 flex items-center gap-1.5 text-xs text-slate-500">
+                    <Clock3 className="size-3.5" /> {new Date(testCall.startedAt).toLocaleString()}
+                  </p>
                 </div>
-                <p className="mt-1 flex items-center gap-1.5 text-xs text-slate-500"><Clock3 className="size-3.5" /> {new Date(testCall.startedAt).toLocaleString()}</p>
               </div>
-            </div>
-            <div>
-              <p className="text-sm font-semibold text-slate-900">{testCall.summary}</p>
-              <p className="mt-1 text-xs text-slate-500">{testCall.transcript.length} transcript turns</p>
-            </div>
-            <div className="flex flex-wrap gap-1.5">
-              {testCall.outcomes.slice(0, 2).map((outcome) => <Badge key={outcome.id} tone="info">{outcome.title}</Badge>)}
-            </div>
-            <Link href="/dashboard/calls/test-call" className="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-slate-200 px-3 text-sm font-semibold text-slate-700 hover:bg-slate-50">
-              Review call <ArrowRight className="size-4" />
-            </Link>
+
+              <p className="mt-5 max-w-2xl text-sm leading-6 text-slate-700">{testCall.summary}</p>
+
+              <div className="mt-5 grid gap-3 sm:grid-cols-3">
+                <CallFact icon={<Headphones className="size-4" />} label="Transcript" value={`${testCall.transcript.length} turns`} />
+                <CallFact icon={<CalendarCheck2 className="size-4" />} label="Requests" value={String(requestCount)} />
+                <CallFact icon={<Bell className="size-4" />} label="Owner message" value={alertPrepared ? "Created" : "None"} />
+              </div>
+            </section>
+
+            <aside className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+              <h3 className="text-sm font-semibold text-slate-950">Work created</h3>
+              <div className="mt-3 space-y-3">
+                {testCall.outcomes.length ? testCall.outcomes.slice(0, 3).map((outcome) => (
+                  <div key={outcome.id}>
+                    <p className="text-sm font-semibold text-slate-800">{outcome.title}</p>
+                    <p className="mt-1 text-xs leading-5 text-slate-500">{outcome.detail}</p>
+                  </div>
+                )) : (
+                  <p className="text-sm leading-6 text-slate-500">No follow-up work was created for this call.</p>
+                )}
+              </div>
+              <Link href="/dashboard/calls/test-call" className="mt-5 inline-flex h-10 items-center gap-2 rounded-lg bg-white px-3 text-sm font-semibold text-slate-800 shadow-sm ring-1 ring-slate-200 hover:bg-slate-50">
+                Review call <ArrowRight className="size-4" />
+              </Link>
+            </aside>
           </div>
         </Card>
       ) : (
-        <Card className="mt-5 flex min-h-72 items-center justify-center p-6 text-center">
+        <Card className="mt-6 flex min-h-72 items-center justify-center p-6 text-center">
           <div>
             <PhoneCall className="mx-auto size-10 text-slate-300" />
             <p className="mt-3 font-semibold text-slate-900">No calls yet</p>
-            <p className="mt-1 max-w-md text-sm leading-6 text-slate-500">Run a test call to review the transcript and captured actions before the business phone is connected.</p>
+            <p className="mt-1 max-w-md text-sm leading-6 text-slate-500">
+              Run a test call to review the transcript and captured actions before the business phone is connected.
+            </p>
             <Link href="/dashboard/test-center" className="mt-4 inline-flex h-10 items-center gap-2 rounded-lg bg-[#17152a] px-4 text-sm font-semibold text-white">
               Open Test Center <ArrowRight className="size-4" />
             </Link>
@@ -102,14 +113,11 @@ export function CallsFeedClient() {
   );
 }
 
-function Stat({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {
+function CallFact({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {
   return (
-    <Card className="p-4 shadow-none">
-      <div className="flex items-center justify-between gap-3">
-        <span className="flex size-9 items-center justify-center rounded-md bg-slate-100 text-slate-600">{icon}</span>
-        <span className="text-2xl font-bold text-slate-950">{value}</span>
-      </div>
-      <p className="mt-4 text-sm font-semibold text-slate-900">{label}</p>
-    </Card>
+    <div className="rounded-lg border border-slate-200 bg-white p-3">
+      <div className="flex items-center gap-2 text-xs font-semibold text-slate-500">{icon}{label}</div>
+      <p className="mt-2 text-sm font-semibold text-slate-900">{value}</p>
+    </div>
   );
 }

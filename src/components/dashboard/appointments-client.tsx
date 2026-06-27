@@ -11,7 +11,6 @@ import {
   Link2,
   SquareCheckBig,
 } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { demoAnsweringSetup, labelRequestField, labelSbaValue, type AnsweringSetup } from "@/domain/small-business-answering";
 import { loadSbaWorkspace, type StoredRequest, type StoredTestCall } from "@/lib/sba-client-storage";
@@ -69,81 +68,50 @@ export function AppointmentsClient() {
   const appointment = setup.appointmentHandling;
 
   return (
-    <main className="mx-auto max-w-[1280px] px-4 py-6 sm:px-6 lg:px-8">
+    <main className="mx-auto max-w-[1180px] px-4 py-6 sm:px-6 lg:px-8">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <div className="flex flex-wrap items-center gap-2">
-            <h1 className="text-2xl font-bold text-slate-950 sm:text-3xl">Appointments</h1>
-            <Badge tone="neutral">{labelSbaValue(appointment.mode)}</Badge>
-          </div>
-          <p className="mt-1 max-w-2xl text-sm leading-6 text-slate-500">Review appointment requests and how callers are guided.</p>
+          <h1 className="text-2xl font-bold text-slate-950 sm:text-3xl">Appointments</h1>
+          <p className="mt-1 max-w-2xl text-sm leading-6 text-slate-500">
+            Review appointment requests and the caller details collected for each one.
+          </p>
         </div>
         <Link href="/dashboard/test-center" className="inline-flex h-11 items-center gap-2 rounded-lg bg-[#17152a] px-4 text-sm font-semibold text-white">
           Test appointment request <ArrowRight className="size-4" />
         </Link>
       </div>
 
-      <div className="mt-5 grid gap-4 lg:grid-cols-[.9fr_1.1fr]">
-        <Card className="p-5">
-          <div className="flex items-center justify-between gap-3">
-            <div className="flex items-center gap-2">
-              <CalendarCheck2 className="size-4 text-violet-600" />
-              <h2 className="font-semibold text-slate-950">Handling mode</h2>
-            </div>
-            <Badge tone={appointment.mode === "calendar_booking" ? "success" : "warning"}>{labelSbaValue(appointment.mode)}</Badge>
-          </div>
-          <div className="mt-4 grid gap-3 sm:grid-cols-2">
-            <Fact label="Booking link" value={appointment.bookingLinkUrl ? "Configured" : "Not configured"} />
-            <Fact label="Calendar" value={labelSbaValue(appointment.calendarIntegration)} />
-            <Fact label="Confirmation" value={appointment.doNotCallBookedUntilConfirmed ? "Request first" : "Can confirm directly"} />
-            <Fact label="Requests" value={String(appointmentRequests.length)} />
+      <Card className="mt-6 overflow-hidden">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 px-5 py-4">
+          <div>
+            <h2 className="font-semibold text-slate-950">Appointment requests</h2>
+            <p className="mt-1 text-sm text-slate-500">
+              {appointmentRequests.length ? `${appointmentRequests.length} request${appointmentRequests.length === 1 ? "" : "s"} captured` : "New appointment requests will appear here."}
+            </p>
           </div>
           {appointment.bookingLinkUrl ? (
-            <a href={appointment.bookingLinkUrl} target="_blank" rel="noreferrer" className="mt-4 inline-flex h-10 items-center gap-2 rounded-lg border border-slate-200 px-3 text-sm font-semibold text-slate-700 hover:bg-slate-50">
-              Open booking link <ExternalLink className="size-4" />
+            <a href={appointment.bookingLinkUrl} target="_blank" rel="noreferrer" className="inline-flex h-10 items-center gap-2 rounded-lg border border-slate-200 px-3 text-sm font-semibold text-slate-700 hover:bg-slate-50">
+              Booking link <ExternalLink className="size-4" />
             </a>
           ) : null}
-        </Card>
-
-        <Card className="p-5">
-          <div className="flex items-center gap-2">
-            <SquareCheckBig className="size-4 text-violet-600" />
-            <h2 className="font-semibold text-slate-950">Captured fields</h2>
-          </div>
-          <div className="mt-4 flex flex-wrap gap-2">
-            {setup.requestCapture.fields.map((field) => <Badge key={field} tone="neutral">{labelRequestField(field)}</Badge>)}
-          </div>
-          <div className="mt-4 rounded-lg bg-slate-50 p-4 text-sm leading-6 text-slate-600">{setup.requestCapture.callerSummaryWording}</div>
-        </Card>
-      </div>
-
-      <Card className="mt-6 overflow-hidden">
-        <div className="border-b border-slate-100 px-5 py-4">
-          <h2 className="font-semibold text-slate-950">Appointment requests</h2>
         </div>
+
         {appointmentRequests.length ? (
           <div className="divide-y divide-slate-100">
             {appointmentRequests.map((request) => (
-              <div key={request.id} className="grid gap-4 p-5 md:grid-cols-[1fr_1fr_.65fr_auto] md:items-center">
+              <article key={request.id} className="grid gap-4 p-5 md:grid-cols-[minmax(0,1fr)_minmax(220px,.6fr)_auto] md:items-center">
                 <div>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <p className="font-semibold text-slate-950">{request.summary ?? "Appointment request"}</p>
-                    {request.testMode ? <Badge tone="purple">Test</Badge> : null}
-                  </div>
-                  <p className="mt-1 flex items-center gap-1.5 text-xs text-slate-500"><Clock3 className="size-3.5" /> {new Date(request.createdAt).toLocaleString()}</p>
+                  <p className="font-semibold text-slate-950">{request.summary ?? "Appointment request"}</p>
+                  <p className="mt-1 text-sm leading-6 text-slate-600">{request.preferredTime ?? "Preferred time was not captured yet."}</p>
                 </div>
-                <div>
-                  <p className="text-xs font-semibold text-slate-400">Preferred time</p>
-                  <p className="mt-1 text-sm leading-6 text-slate-700">{request.preferredTime ?? "Not captured yet"}</p>
-                </div>
-                <div>
-                  <p className="text-xs font-semibold text-slate-400">Status</p>
-                  <Badge tone={request.status === "completed" || request.status === "booked" ? "success" : request.status === "contacted" ? "info" : request.status === "archived" ? "neutral" : "warning"}>{labelSbaValue(request.status)}</Badge>
+                <div className="space-y-2 text-xs text-slate-500">
+                  <p className="flex items-center gap-1.5"><Clock3 className="size-3.5" /> {new Date(request.createdAt).toLocaleString()}</p>
+                  <p>{labelSbaValue(request.status)}</p>
                 </div>
                 <Link href="/dashboard/calls/test-call" className="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-slate-200 px-3 text-sm font-semibold text-slate-700 hover:bg-slate-50">
                   View call <ArrowRight className="size-4" />
                 </Link>
-              </div>
+              </article>
             ))}
           </div>
         ) : (
@@ -160,23 +128,47 @@ export function AppointmentsClient() {
         )}
       </Card>
 
-      <div className="mt-6 grid gap-4 md:grid-cols-2">
+      <div className="mt-5 grid gap-4 lg:grid-cols-[.85fr_1.15fr]">
         <Card className="p-5">
-          <h2 className="font-semibold text-slate-950">Appointment-eligible services</h2>
-          <div className="mt-4 space-y-2">
-            {(eligibleServices.length ? eligibleServices : setup.services.filter((service) => service.enabled).slice(0, 3)).map((service) => (
-              <div key={service.id} className="flex items-center justify-between rounded-lg border border-slate-200 p-3">
-                <span className="text-sm font-semibold text-slate-800">{service.name}</span>
-                <Badge tone={service.appointmentEligible ? "success" : "neutral"}>{service.appointmentEligible ? "Eligible" : "Request only"}</Badge>
-              </div>
-            ))}
+          <div className="flex items-center gap-2">
+            <CalendarCheck2 className="size-4 text-slate-600" />
+            <h2 className="font-semibold text-slate-950">How callers are guided</h2>
+          </div>
+          <div className="mt-4 grid gap-3 sm:grid-cols-2">
+            <Fact label="Scheduling" value={labelSbaValue(appointment.mode)} />
+            <Fact label="Calendar" value={labelSbaValue(appointment.calendarIntegration)} />
+            <Fact label="Confirmation" value={appointment.doNotCallBookedUntilConfirmed ? "Owner approval first" : "Can confirm directly"} />
+            <Fact label="Appointment services" value={String(eligibleServices.length)} />
           </div>
         </Card>
+
         <Card className="p-5">
-          <div className="flex items-center gap-2"><Link2 className="size-4 text-violet-600" /><h2 className="font-semibold text-slate-950">Caller confirmations</h2></div>
-          <p className="mt-3 text-sm leading-6 text-slate-600">{setup.callerConfirmations.enabled ? setup.callerConfirmations.smsTemplate ?? "Caller confirmations are enabled." : "Caller confirmations are off until an owner approves them."}</p>
+          <div className="flex items-center gap-2">
+            <SquareCheckBig className="size-4 text-slate-600" />
+            <h2 className="font-semibold text-slate-950">Caller details collected</h2>
+          </div>
+          <div className="mt-4 flex flex-wrap gap-2">
+            {setup.requestCapture.fields.map((field) => (
+              <span key={field} className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-semibold text-slate-600">
+                {labelRequestField(field)}
+              </span>
+            ))}
+          </div>
+          <p className="mt-4 rounded-lg bg-slate-50 p-4 text-sm leading-6 text-slate-600">{setup.requestCapture.callerSummaryWording}</p>
         </Card>
       </div>
+
+      <Card className="mt-5 p-5">
+        <div className="flex items-center gap-2">
+          <Link2 className="size-4 text-slate-600" />
+          <h2 className="font-semibold text-slate-950">Caller confirmations</h2>
+        </div>
+        <p className="mt-3 text-sm leading-6 text-slate-600">
+          {setup.callerConfirmations.enabled
+            ? setup.callerConfirmations.smsTemplate ?? "Caller confirmations are enabled."
+            : "Caller confirmations are off until an owner approves them."}
+        </p>
+      </Card>
     </main>
   );
 }
