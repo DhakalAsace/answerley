@@ -369,6 +369,7 @@ export function SmallBusinessAnsweringTryClient({
 
   async function startCall() {
     if (callActiveRef.current) return;
+    primeLiveOutputAudio();
     setCallActive(true);
     setCallEnded(false);
     setUnknownQuestion(null);
@@ -586,6 +587,20 @@ export function SmallBusinessAnsweringTryClient({
       liveOutputPlaybackTimeRef.current = liveOutputAudioContextRef.current.currentTime;
     }
     return liveOutputAudioContextRef.current;
+  }
+
+  function primeLiveOutputAudio() {
+    try {
+      const context = getLiveOutputContext();
+      const buffer = context.createBuffer(1, 1, LIVE_OUTPUT_SAMPLE_RATE);
+      const source = context.createBufferSource();
+      source.buffer = buffer;
+      source.connect(context.destination);
+      source.start();
+      void context.resume();
+    } catch {
+      // The transcript still works if the browser blocks audio output.
+    }
   }
 
   function playLiveAudio(base64: string, mimeType?: string) {
