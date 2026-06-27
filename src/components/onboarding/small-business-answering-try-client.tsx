@@ -420,22 +420,7 @@ export function SmallBusinessAnsweringTryClient({
   function requestLiveOpeningGreeting(socket: WebSocket) {
     if (liveGreetingRequestedRef.current || socket.readyState !== WebSocket.OPEN) return;
     liveGreetingRequestedRef.current = true;
-    const greeting = setup.callHandling.callerGreeting || `Thanks for calling ${businessName}. How can I help today?`;
-    socket.send(JSON.stringify({
-      clientContent: {
-        turns: [
-          {
-            role: "user",
-            parts: [
-              {
-                text: `The caller has just connected to the phone call. Greet them out loud now using this approved opening greeting: "${greeting}". Then pause for the caller's response.`,
-              },
-            ],
-          },
-        ],
-        turnComplete: true,
-      },
-    }));
+    socket.send(JSON.stringify({ clientContent: { turnComplete: true } }));
   }
 
   async function connectGeminiLive() {

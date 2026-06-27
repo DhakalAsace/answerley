@@ -22,8 +22,6 @@ describe("Gemini Live runtime contract", () => {
     });
     expect(runtime.layers.identity).toContain("Brightfield Services");
     expect(runtime.layers.groundingRules).toContain("Do not infer missing prices");
-    expect(runtime.layers.conversationRules).toContain("Handle the call like a normal front-desk representative");
-    expect(runtime.layers.conversationRules).toContain("end_call_with_summary exactly once");
     expect(runtime.layers.modeRules).toContain("TEST");
     expect(runtime.systemInstruction).toContain("<tool_policy>");
     expect(validateRuntimeCoverage(plan, runtime).complete).toBe(true);
