@@ -185,6 +185,22 @@ describe("focused canonical mapping", () => {
     expect(setup.business.name).toBe("Northside Plumbing");
     expect(setup.services[0]?.name).toBe("Emergency plumbing");
     expect(setup.approvedAnswers[0]?.question).toBe("When are you open?");
+    expect(envelope.document.businessProfile.businessName).toBe("Northside Plumbing");
+    expect(envelope.document.businessProfile.websiteUrl).toBe("https://northside.example/");
+    expect(envelope.document.offerings).toHaveLength(1);
+    expect(envelope.document.offerings[0]).toMatchObject({
+      name: "Emergency plumbing",
+      description: "Urgent plumbing repair.",
+      aliases: ["emergency repair"],
+      canAnswerQuestions: true,
+      requestable: true,
+    });
+    expect(envelope.document.knowledgeItems).toHaveLength(1);
+    expect(envelope.document.knowledgeItems[0]).toMatchObject({
+      question: "When are you open?",
+      answer: "We answer calls 24/7.",
+    });
+    expect(envelope.document.greetingVoice.openingGreeting).toBe("Thanks for calling Northside Plumbing. How can I help today?");
     expect(envelope.document.locationsCoverage.locations).toEqual([]);
     expect(JSON.stringify(envelope.document.locationsCoverage)).not.toContain("Winnipeg");
   });

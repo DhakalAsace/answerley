@@ -21,6 +21,9 @@ describe("Gemini Live runtime contract", () => {
       currentTime: "2026-06-24T18:00:00.000Z",
     });
     expect(runtime.layers.identity).toContain("Brightfield Services");
+    expect(runtime.layers.voiceAndSpeakingStyle).toMatch(/^Speak in .+\.$/);
+    expect(runtime.layers.voiceAndSpeakingStyle).not.toContain("front-desk");
+    expect(runtime.layers.voiceAndSpeakingStyle).not.toContain("generic script");
     expect(runtime.layers.groundingRules).toContain("Do not infer missing prices");
     expect(runtime.layers.modeRules).toContain("TEST");
     expect(runtime.systemInstruction).toContain("<tool_policy>");
