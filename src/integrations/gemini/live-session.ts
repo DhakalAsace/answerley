@@ -4,7 +4,7 @@ import type {
 } from "@/domain/answering-plan/runtime/schema";
 
 const audioResponseModalities = ["AUDIO"] as const;
-const defaultGeminiLiveVoiceName = "Kore";
+const defaultGeminiLiveVoiceName = "Puck";
 
 function geminiLiveVoiceName() {
   return process.env.GEMINI_LIVE_VOICE_NAME?.trim() || defaultGeminiLiveVoiceName;
@@ -38,12 +38,13 @@ export function buildGeminiLiveConnectConfig(runtime: LiveRuntimePack) {
 
 export function buildGeminiLiveWebSocketSetup(runtime: LiveRuntimePack) {
   const liveConfig = buildGeminiLiveConnectConfig(runtime).config;
-  const { responseModalities, ...setupConfig } = liveConfig;
+  const { responseModalities, speechConfig, ...setupConfig } = liveConfig;
   return {
     setup: {
       model: `models/${runtime.model}`,
       generationConfig: {
         responseModalities,
+        speechConfig,
       },
       ...setupConfig,
     },

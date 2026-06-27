@@ -4,7 +4,10 @@ import {
   FoundationPreviewRuntimeCompiler,
   validateRuntimeCoverage,
 } from "../runtime/compiler";
-import { buildGeminiLiveConnectConfig } from "@/integrations/gemini/live-session";
+import {
+  buildGeminiLiveConnectConfig,
+  buildGeminiLiveWebSocketSetup,
+} from "@/integrations/gemini/live-session";
 
 const compiler = new FoundationPreviewRuntimeCompiler();
 
@@ -44,11 +47,14 @@ describe("Gemini Live runtime contract", () => {
     const liveConfig = buildGeminiLiveConnectConfig(runtime);
     expect(liveConfig.model).toBe("gemini-3.1-flash-live-preview");
     expect(liveConfig.config.responseModalities).toEqual(["AUDIO"]);
-    expect(liveConfig.config.speechConfig.voiceConfig.prebuiltVoiceConfig.voiceName).toBe("Kore");
+    expect(liveConfig.config.speechConfig.voiceConfig.prebuiltVoiceConfig.voiceName).toBe("Puck");
     expect(liveConfig.config.systemInstruction.parts[0].text).toContain("<identity>");
     expect(liveConfig.config.tools?.[0].functionDeclarations[0]).toMatchObject({
       name: "record_collected_field",
       parameters: expect.objectContaining({ type: "object" }),
     });
+    const webSocketSetup = buildGeminiLiveWebSocketSetup(runtime);
+    expect(webSocketSetup.setup.generationConfig.speechConfig.voiceConfig.prebuiltVoiceConfig.voiceName).toBe("Puck");
+    expect(webSocketSetup.setup).not.toHaveProperty("speechConfig");
   });
 });
