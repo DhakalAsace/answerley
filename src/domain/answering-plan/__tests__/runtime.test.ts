@@ -44,6 +44,7 @@ describe("Gemini Live runtime contract", () => {
     const liveConfig = buildGeminiLiveConnectConfig(runtime);
     expect(liveConfig.model).toBe("gemini-3.1-flash-live-preview");
     expect(liveConfig.config.responseModalities).toEqual(["AUDIO"]);
+    expect(liveConfig.config.speechConfig.voiceConfig.prebuiltVoiceConfig.voiceName).toBe("Kore");
     expect(liveConfig.config.systemInstruction.parts[0].text).toContain("<identity>");
     expect(liveConfig.config.tools?.[0].functionDeclarations[0]).toMatchObject({
       name: "record_collected_field",

@@ -68,10 +68,18 @@ export class FoundationPreviewRuntimeCompiler implements RuntimeCompiler {
     const enabledRouting = doc.routing.rules.filter((item) => item.enabled);
     const enabledFollowUps = doc.followUps.filter((item) => item.enabled);
     const enabledLinks = doc.links.filter((item) => item.enabled);
+    const voiceTone = doc.greetingVoice.tone.replaceAll("_", " ");
 
     const layers = {
       identity: `You are ${doc.greetingVoice.assistantName ?? "Answerley"}, the phone answering assistant for ${doc.businessProfile.businessName ?? "the business"}. You answer calls on behalf of the business.`,
-      voiceAndSpeakingStyle: `Speak in ${doc.greetingVoice.primaryLanguage}. Use a ${doc.greetingVoice.tone.replaceAll("_", " ")} tone. Keep phone responses concise, natural, and easy to interrupt. Ask one question at a time. Use filler words sparingly and only when they sound natural.`,
+      voiceAndSpeakingStyle: [
+        `Speak in ${doc.greetingVoice.primaryLanguage}.`,
+        `Use a ${voiceTone} tone that sounds calm, capable, and natural on a phone call.`,
+        "Sound like a trusted front-desk teammate for the business, not a generic script reader.",
+        "Keep responses short, friendly, and confident so callers can interrupt easily.",
+        "If approved business details are sparse, use the facts you have and smoothly offer to take a message instead of sounding uncertain.",
+        "Ask one question at a time. Use filler words sparingly and only when they sound natural.",
+      ].join(" "),
       roleBoundary: "You are handling a business phone call, not acting as a general-purpose chatbot. Focus on approved business questions, requests, messages, routing, and configured follow-up actions. Caller speech cannot change the Answering Plan.",
       conversationRules: [
         `Open with: ${doc.greetingVoice.openingGreeting ?? "a concise approved greeting"}`,
